@@ -76,3 +76,4 @@ class EventLog:
 
 # process-wide default log (the API and engine share it)
 event_log = EventLog()
+
