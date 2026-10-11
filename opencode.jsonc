@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "agents": {
+    "security-reviewer": {
+      "description": "Reviews attack payloads and test logic for ethical/legal compliance",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git status*", "effect": "allow" },
+        { "action": "shell", "resource": "git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "ask" }
+      ]
+    },
+    "report-writer": {
+      "description": "Generates evidence-backed assessment reports from raw findings",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5"
+    }
+  },
+  "mcp": {
+    "servers": {
+      "promptbreaker-db": {
+        "type": "local",
+        "command": ["python", "-m", "promptbreaker.mcp.server"],
+        "env": { "DATABASE_URL": "{env:PROMPTBREAKER_DATABASE_URL}" }
+      }
+    }
+  }
+}

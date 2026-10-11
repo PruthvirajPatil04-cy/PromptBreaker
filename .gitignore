@@ -1,0 +1,30 @@
+# Secrets — never commit or export. Copy .env.example → .env and fill in.
+.env
+.api_key
+
+# Runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Node / Next.js
+dashboard/node_modules/
+dashboard/.next/
+dashboard/next-env.d.ts
+npm-debug.log*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
