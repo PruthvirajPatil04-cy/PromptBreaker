@@ -96,3 +96,29 @@ class EvidenceRow(Base):
     prev_hmac: Mapped[str] = mapped_column(String(64), default="")
     hmac: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TargetRow(Base):
+    __tablename__ = "targets"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    adapter: Mapped[str] = mapped_column(String(32), default="openai")
+    endpoint: Mapped[str] = mapped_column(Text)
+    secret_ref: Mapped[str] = mapped_column(String(256), default="")
+    allow_private: Mapped[int] = mapped_column(Integer, default=0)
+    max_redirects: Mapped[int] = mapped_column(Integer, default=3)
+    sandbox: Mapped[int] = mapped_column(Integer, default=0)
+    verified: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class EventRow(Base):
+    __tablename__ = "run_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(32), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    type: Mapped[str] = mapped_column(String(32))
+    ts: Mapped[str] = mapped_column(String(40))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)

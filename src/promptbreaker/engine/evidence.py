@@ -30,8 +30,11 @@ class EvidenceChain:
         digest = self.sha256_of(payload)
         message = f"{digest}:{self._prev}".encode()
         mac = hmac.new(self._key, message, hashlib.sha256).hexdigest()
+        # Row ID must be unique per run: two runs against a deterministic
+        # target hash identical payloads, so the digest alone collides.
+        # Integrity lives in sha256 + the HMAC chain, not in this ID.
         ev = Evidence(
-            id=f"ev-{digest[:16]}", run_id=run_id, attempt_id=attempt_id,
+            id=f"ev-{run_id[4:]}-{attempt_id}", run_id=run_id, attempt_id=attempt_id,
             kind=kind, sha256=digest, prev_hmac=self._prev, hmac=mac,
             created_at=utcnow(),
         )

@@ -13,6 +13,7 @@ export const overview: OverviewPayload = {
     simulated: 4853,
     successful: 1139,
     lastRunAt: "2025-09-05T17:50:00Z",
+    trend: [52, 48, 55, 49, 44, 47, 46],
     categories: [
       { category: "Security", score: 64.7, passed: 3847, failed: 1122, partial: 40, errors: 3 },
       { category: "Safety", score: 36.43, passed: 410, failed: 715, partial: 60, errors: 0 },

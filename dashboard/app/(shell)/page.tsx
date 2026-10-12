@@ -1,10 +1,11 @@
 "use client";
 // Overview — matches the reference layout: Overall Score + Category Scores,
 // Recent Test Runs table, Categories Overview cards.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getOverview } from "@/lib/api";
+import { getOverview, USE_MOCK } from "@/lib/api";
 import type { OverviewPayload } from "@/lib/types";
+import { StartScanModal } from "@/components/StartScanModal";
 import { GaugeChart } from "@/components/charts/GaugeChart";
 import { SparkTrend } from "@/components/charts/SparkTrend";
 import { ScoreBar } from "@/components/charts/ScoreBar";
@@ -15,17 +16,39 @@ import {
 } from "@/components/ui/primitives";
 import { riskBand, bandColor } from "@/lib/scoring";
 
-const TREND = [52, 48, 55, 49, 44, 47, 46];
+const MOCK_TREND = [52, 48, 55, 49, 44, 47, 46];
 
 export default function OverviewPage() {
   const [data, setData] = useState<OverviewPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState(false);
   const [view, setView] = useState<"score" | "trend">("score");
 
-  useEffect(() => { getOverview().then(setData); }, []);
+  const load = useCallback(() => {
+    getOverview().then((d) => { setData(d); setError(null); })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    load();
+    // live mode: refresh while a run is queued/running so progress moves
+    if (USE_MOCK) return;
+    const t = setInterval(() => {
+      setData((cur) => {
+        const active = cur?.recentRuns?.some((r) => r.status === "QUEUED" || r.status === "EXECUTE");
+        if (active) load();
+        return cur;
+      });
+    }, 3000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  if (error) return <ErrorBanner error={error} onRetry={load} />;
   if (!data) return <div className="text-muted">Loading…</div>;
 
   const o = data.overall;
   const band = riskBand(o.score);
+  const trend = USE_MOCK && o.trend.length < 2 ? MOCK_TREND : o.trend;
 
   return (
     <div className="space-y-6">
@@ -35,11 +58,16 @@ export default function OverviewPage() {
           <button className="px-4 py-2 rounded-lg border border-border text-sm text-text hover:bg-cardHover">
             Generate Report
           </button>
-          <button className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover">
+          <button
+            onClick={() => setModal(true)}
+            className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover"
+          >
             New Test Run +
           </button>
         </div>
       </div>
+
+      {modal && <StartScanModal onClose={() => setModal(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Overall Score */}
@@ -88,7 +116,7 @@ export default function OverviewPage() {
                   </div>
                 </>
               ) : (
-                <SparkTrend points={TREND} width={280} height={140} />
+                <SparkTrend points={trend} width={280} height={140} />
               )}
             </div>
           </div>
@@ -109,6 +137,21 @@ export default function OverviewPage() {
           title="Recent Test Runs"
           right={<Link href="/runs" className="text-accent text-sm hover:underline">See All ›</Link>}
         />
+        {data.recentRuns.length === 0 ? (
+          <div className="py-12 text-center space-y-3">
+            <div className="text-text font-medium">No assessments yet</div>
+            <p className="text-sm text-muted max-w-md mx-auto">
+              Configure an authorized target in Target Settings, then start your first
+              adversarial scan. The scope gate requires an attestation on every run.
+            </p>
+            <button
+              onClick={() => setModal(true)}
+              className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover"
+            >
+              New Test Run +
+            </button>
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-faint border-b border-border">
@@ -150,11 +193,17 @@ export default function OverviewPage() {
             ))}
           </tbody>
         </table>
+        )}
       </Card>
 
       {/* Categories Overview */}
       <Card>
         <CardHeader title="Categories Overview" />
+        {data.suitesByCategory.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted">
+            Category breakdowns appear after your first run completes.
+          </div>
+        ) : null}
         {data.suitesByCategory.map((cat) => (
           <div key={cat.category} className="mb-6 last:mb-0">
             <div className="flex items-center gap-3 mb-3">
@@ -188,6 +237,29 @@ export default function OverviewPage() {
           </div>
         ))}
       </Card>
+    </div>
+  );
+}
+
+/** Fail loudly: live-mode API problems must never fall back to mock numbers. */
+function ErrorBanner({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-6 space-y-3">
+      <div className="flex items-center gap-2 text-red-300 font-semibold">
+        <span className="h-2 w-2 rounded-full bg-red-400" />
+        Engine unreachable
+      </div>
+      <p className="text-sm text-red-200/80 font-mono break-all">{error}</p>
+      <p className="text-xs text-muted">
+        The dashboard will not show cached/mock numbers while live data is expected.
+        Check that the promptbreaker API service is running.
+      </p>
+      <button
+        onClick={onRetry}
+        className="px-4 py-2 rounded-lg border border-red-400/40 text-sm text-red-200 hover:bg-red-500/20"
+      >
+        Retry
+      </button>
     </div>
   );
 }

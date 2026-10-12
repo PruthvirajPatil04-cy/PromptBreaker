@@ -25,6 +25,7 @@ export interface OverallScore {
   successful: number;
   categories: CategoryScore[];
   lastRunAt: string | null;
+  trend: number[]; // per-run scores, oldest → newest (last 7 finished runs)
 }
 
 export interface RecentRun {

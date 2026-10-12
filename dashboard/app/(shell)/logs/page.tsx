@@ -1,33 +1,49 @@
 "use client";
 // Log Analysis — live event stream with filter chips and detail inspector.
+// Live mode: picks the latest run (no hardcoded IDs) and offers a run picker.
 import { useEffect, useMemo, useState } from "react";
-import { getLogEvents } from "@/lib/api";
+import { getLogEvents, getOverview } from "@/lib/api";
 import { streamRunEvents } from "@/lib/sse";
-import type { LogEvent } from "@/lib/types";
+import type { LogEvent, RecentRun } from "@/lib/types";
 import { Card, CardHeader } from "@/components/ui/primitives";
 
 const LEVEL_COLOR: Record<string, string> = { info: "#8B8D93", warn: "#F59E0B", error: "#EF4444" };
-const RUN_ID = "r-full-1";
+const MOCK_RUN_ID = "r-full-1"; // fixture run that carries mock events
 
 export default function LogsPage() {
+  const [runs, setRuns] = useState<RecentRun[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<LogEvent[]>([]);
   const [live, setLive] = useState(false);
   const [levels, setLevels] = useState<Set<string>>(new Set(["info", "warn", "error"]));
   const [selected, setSelected] = useState<LogEvent | null>(null);
 
+  // discover runs (latest first); fall back to the fixture run in mock mode
   useEffect(() => {
-    getLogEvents(RUN_ID).then(setEvents);
+    getOverview()
+      .then((o) => {
+        const list = o.recentRuns;
+        setRuns(list);
+        setRunId(list[0]?.runId ?? MOCK_RUN_ID);
+      })
+      .catch(() => setRunId(MOCK_RUN_ID));
   }, []);
 
   useEffect(() => {
-    if (!live) return;
+    if (!runId) return;
+    setSelected(null);
+    getLogEvents(runId).then(setEvents).catch(() => setEvents([]));
+  }, [runId]);
+
+  useEffect(() => {
+    if (!live || !runId) return;
     const lastSeq = events.length ? Math.max(...events.map((e) => e.seq)) : 0;
-    const stop = streamRunEvents(RUN_ID, (e) => {
+    const stop = streamRunEvents(runId, (e) => {
       setEvents((prev) => (prev.some((x) => x.seq === e.seq) ? prev : [...prev, e]));
     }, { lastEventId: lastSeq });
     return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live]);
+  }, [live, runId]);
 
   const toggleLevel = (l: string) => {
     setLevels((prev) => {
@@ -47,7 +63,22 @@ export default function LogsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Log Analysis</h1>
-          <div className="text-xs text-muted mt-1 font-mono">{RUN_ID}</div>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-xs text-muted font-mono">{runId ?? "…"}</span>
+            {runs.length > 1 && (
+              <select
+                value={runId ?? ""}
+                onChange={(e) => setRunId(e.target.value)}
+                className="bg-card border border-border rounded-lg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+              >
+                {runs.map((r) => (
+                  <option key={r.runId} value={r.runId}>
+                    {r.name} — {r.executedOn?.slice(0, 10)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         <button
           onClick={() => setLive((v) => !v)}
@@ -96,7 +127,11 @@ export default function LogsPage() {
               <span className="text-text truncate">{e.detail ?? ""}</span>
             </button>
           ))}
-          {filtered.length === 0 && <div className="py-6 text-center text-faint">No events match.</div>}
+          {filtered.length === 0 && (
+            <div className="py-6 text-center text-faint">
+              {runId ? "No events match." : "Loading runs…"}
+            </div>
+          )}
         </div>
       </Card>
 

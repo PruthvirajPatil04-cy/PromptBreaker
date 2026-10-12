@@ -1,30 +1,62 @@
 "use client";
 // Run Detail — per-suite summary, findings table with quoted evidence.
-import { useEffect, useState } from "react";
-import { getRunDetail } from "@/lib/api";
+// Live mode polls while the run is in flight, so the demo shows scores and
+// findings appearing as the engine works.
+import { useCallback, useEffect, useState } from "react";
+import { getRunDetail, liveRunReport } from "@/lib/api";
 import type { RunDetail as RunDetailT } from "@/lib/types";
-import { Card, CardHeader, SeverityPill } from "@/components/ui/primitives";
+import { Card, CardHeader, SeverityPill, StatusPill } from "@/components/ui/primitives";
 import { DonutRing } from "@/components/charts/DonutRing";
 import { bandColor } from "@/lib/scoring";
+
+const ACTIVE = new Set(["QUEUED", "PLAN", "EXECUTE", "JUDGE", "MUTATE", "REPORT"]);
 
 export default function RunDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const [run, setRun] = useState<RunDetailT | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
-  useEffect(() => { getRunDetail(id).then(setRun); }, [id]);
+  const load = useCallback(() => {
+    getRunDetail(id).then((r) => { setRun(r); setError(null); })
+      .catch((e) => setError(String(e)));
+  }, [id]);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(() => {
+      setRun((cur) => {
+        if (!cur || ACTIVE.has(cur.status)) load();
+        return cur;
+      });
+    }, 2000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  if (error) return <div className="text-red-300 font-mono text-sm">{error}</div>;
   if (!run) return <div className="text-muted">Loading…</div>;
+
+  const running = ACTIVE.has(run.status);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">{run.name}</h1>
+          <h1 className="text-xl font-semibold flex items-center gap-3">
+            {run.name}
+            <StatusPill status={run.status} />
+          </h1>
           <div className="text-xs text-muted mt-1 font-mono">{run.runId} · {run.target}</div>
         </div>
         <div className="flex gap-3">
           <button className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover">Re-run</button>
-          <button className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover">Download Report</button>
+          <button
+            disabled={running}
+            onClick={() => liveRunReport(run.runId)}
+            className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover disabled:opacity-40"
+          >
+            {running ? "Running…" : "Download Report"}
+          </button>
         </div>
       </div>
 

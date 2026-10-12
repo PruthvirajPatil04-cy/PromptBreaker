@@ -128,9 +128,12 @@ async def test_api_requires_attestation_fields():
     transport = ASGITransport(app=app_module.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/v1/runs", json={
-            "target": "https://mine.example.com/v1",
+            # IP literal + closed port: engine spawns, connection refused
+            # instantly — no DNS, no network, no 149s teardown hang.
+            "target": "http://127.0.0.1:9/v1",
+            "allow_private": True,
             "attestation": {
-                "target_pattern": "mine.example.com",
+                "target_pattern": "127.0.0.1",
                 "authorized_by": "", "reference": "",
                 "expires": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             },
@@ -138,6 +141,9 @@ async def test_api_requires_attestation_fields():
     # 202 accepted into queue; authorization completeness enforced by CLI/ops,
     # but scope must still be valid — here pattern matches so it can proceed.
     assert resp.status_code in (202, 403)
+    if resp.status_code == 202:
+        # let the spawned task finish its instant-refused run before teardown
+        await asyncio.sleep(0.3)
 
 
 async def test_api_healthz():
