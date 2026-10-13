@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 
 API="${API:-http://127.0.0.1:8000}"
 RUNS="${1:-2}"
-KEY="${KEY:-$(sed -n 's/^PLAINTEXT_API_KEY=//p' .api_key 2>/dev/null || true)}"
+KEY="${KEY:-$(tr -d '\n' < .api_key 2>/dev/null || true)}"
 
 py() { [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3; }
 
