@@ -3,7 +3,7 @@
 // components import typed functions from here and never touch fixtures directly.
 import type {
   OverviewPayload, RunDetail, ProbeRegistryItem, ComplianceControl,
-  TargetConfig, HardeningItem, LogEvent,
+  TargetConfig, HardeningItem, LogEvent, SuiteInfo,
 } from "./types";
 
 export const overview: OverviewPayload = {
@@ -110,6 +110,10 @@ export const complianceControls: ComplianceControl[] = [
   { id: "MAP-1.2", framework: "NIST-AI-RMF", title: "Map: risk identified & documented", coveragePct: 90, status: "pass", linkedFindingIds: [] },
   { id: "MEAS-2.1", framework: "NIST-AI-RMF", title: "Measure: risks assessed quantitatively", coveragePct: 55, status: "partial", linkedFindingIds: [] },
   { id: "MGMT-4.3", framework: "NIST-AI-RMF", title: "Manage: third-party risk controlled", coveragePct: 30, status: "gap", linkedFindingIds: [] },
+];
+
+export const suites: SuiteInfo[] = [
+  { name: "core", probes: 12, description: "Full 12-probe suite across all nine OWASP LLM families" },
 ];
 
 export const targets: TargetConfig[] = [

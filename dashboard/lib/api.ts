@@ -7,7 +7,7 @@
 // mock numbers next to live ones (fabricated data would be worse than none).
 import type {
   OverviewPayload, RunDetail, ProbeRegistryItem, ComplianceControl,
-  TargetConfig, HardeningItem, LogEvent,
+  TargetConfig, HardeningItem, LogEvent, SuiteInfo,
 } from "./types";
 import * as mock from "./mock";
 
@@ -79,6 +79,12 @@ export async function getCompliance(): Promise<ComplianceControl[]> {
 
 export async function getTargets(): Promise<TargetConfig[]> {
   return USE_MOCK ? mock.targets : live<TargetConfig[]>("/v1/targets");
+}
+
+export async function getSuites(): Promise<SuiteInfo[]> {
+  return USE_MOCK
+    ? mock.suites
+    : live<{ suites: SuiteInfo[] }>("/v1/suites").then((d) => d.suites);
 }
 
 export async function getHardening(): Promise<HardeningItem[]> {

@@ -1,0 +1,4 @@
+{
+  "description": "Prompt, secret & PII exposure (LLM02)",
+  "probes": ["SI-001", "SI-002", "PI-004"]
+}

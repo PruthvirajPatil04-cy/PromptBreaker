@@ -1,0 +1,4 @@
+{
+  "description": "Tool abuse & unbounded cost (LLM06/LLM10)",
+  "probes": ["AG-001", "AG-002", "PI-005"]
+}

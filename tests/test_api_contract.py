@@ -167,3 +167,23 @@ async def test_empty_db_overview_returns_zeros_not_errors():
     body = resp.json()
     assert body["overall"]["simulated"] == 0
     assert body["recentRuns"] == []
+
+
+async def test_suites_contract_matches_typescript_client():
+    async with _client() as c:
+        resp = await c.get("/v1/suites")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"suites"}
+    assert body["suites"][0]["name"] == "core"
+    for s in body["suites"]:
+        assert set(s) == {"name", "probes", "description"}
+        assert s["probes"] >= 1
+    # shipped focus suites must be discoverable and load through the same
+    # path the engine uses (compact subset -> real core probes)
+    from promptbreaker.probes.registry import load_suite
+
+    names = {s["name"] for s in body["suites"]}
+    assert {"quick", "jailbreak", "privacy", "agency", "safety"} <= names
+    for s in body["suites"]:
+        assert len(load_suite(s["name"])) == s["probes"]

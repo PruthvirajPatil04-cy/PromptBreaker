@@ -157,18 +157,51 @@ def core_probes() -> list[Probe]:
     ]
 
 
-def load_suite(name: str) -> list[Probe]:
-    """Load a suite by name: 'core' (built-in) or a JSON file in suites/."""
+CORE_DESCRIPTION = "Full 12-probe suite across all nine OWASP LLM families"
+
+
+def _suite_raw(name: str) -> object | None:
+    """Raw JSON for a suite file; None means the built-in core suite."""
     if name == "core":
-        return core_probes()
+        return None
     path = SUITE_DIR / f"{name}.json"
     if not path.exists():
         raise FileNotFoundError(f"suite {name!r} not found at {path}")
-    raw = json.loads(path.read_text())
+    return json.loads(path.read_text())
+
+
+def load_suite(name: str) -> list[Probe]:
+    """Load a suite by name: 'core' (built-in) or a JSON file in suites/.
+
+    Suite JSON is either a full list of Probe objects (custom probes) or the
+    compact form ``{"description": "...", "probes": ["PI-001", ...]}`` — an
+    ordered subset of the core registry, so payloads live in exactly one
+    place and a suite file stays readable.
+    """
+    raw = _suite_raw(name)
+    if raw is None:
+        return core_probes()
+    if isinstance(raw, dict):
+        by_id = {p.id: p for p in core_probes()}
+        try:
+            return [by_id[pid] for pid in raw.get("probes", [])]
+        except KeyError as exc:
+            raise ValueError(
+                f"suite {name!r} references unknown probe {exc.args[0]!r}"
+            ) from exc
     return [Probe(**item) for item in raw]
+
+
+def suite_meta(name: str) -> dict:
+    """Dashboard-facing suite info: name, probe count, one-line description."""
+    raw = _suite_raw(name)
+    description = CORE_DESCRIPTION if raw is None else (
+        str(raw.get("description", "")) if isinstance(raw, dict) else ""
+    )
+    return {"name": name, "probes": len(load_suite(name)), "description": description}
 
 
 def list_suites() -> list[str]:
     builtin = ["core"]
-    on_disk = [p.stem for p in SUITE_DIR.glob("*.json")] if SUITE_DIR.exists() else []
+    on_disk = sorted(p.stem for p in SUITE_DIR.glob("*.json")) if SUITE_DIR.exists() else []
     return builtin + on_disk

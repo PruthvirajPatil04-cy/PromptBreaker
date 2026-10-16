@@ -1,0 +1,4 @@
+{
+  "description": "Jailbreak & instruction-override focus (LLM01)",
+  "probes": ["PI-001", "PI-002", "PI-003", "PI-004"]
+}

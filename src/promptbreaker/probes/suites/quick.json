@@ -1,0 +1,4 @@
+{
+  "description": "Fast 4-probe smoke test (~1 min on stage)",
+  "probes": ["PI-001", "SI-001", "AG-001", "OX-001"]
+}

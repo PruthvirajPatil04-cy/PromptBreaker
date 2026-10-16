@@ -53,7 +53,7 @@ from promptbreaker.engine.runner import Engine, RunResult
 from promptbreaker.errors import ScopeError
 from promptbreaker.judge.core import LlmJudge
 from promptbreaker.models import Probe, RunBudget, RunStatus, ScopeAttestation, Severity, Verdict
-from promptbreaker.probes.registry import core_probes, list_suites, load_suite
+from promptbreaker.probes.registry import core_probes, list_suites, load_suite, suite_meta
 from promptbreaker.report.render import to_json, to_markdown, to_sarif
 from promptbreaker.scoring import risk_band, score_category
 
@@ -382,7 +382,8 @@ async def create_run(req: RunRequest) -> CreateRunOut:
 
 @app.get("/v1/suites", dependencies=[Depends(require_api_key)])
 async def get_suites() -> dict:
-    return {"suites": list_suites()}
+    """Suite picker for the Start Scan modal: name + probe count + blurb."""
+    return {"suites": [suite_meta(n) for n in list_suites()]}
 
 
 @app.get("/v1/runs", dependencies=[Depends(require_api_key)])

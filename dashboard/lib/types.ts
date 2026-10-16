@@ -114,6 +114,12 @@ export interface ComplianceControl {
   linkedFindingIds: string[];
 }
 
+export interface SuiteInfo {
+  name: string;
+  probes: number;
+  description: string;
+}
+
 export interface TargetConfig {
   id: string;
   name: string;

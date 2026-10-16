@@ -5,14 +5,15 @@
 // that gate: no attestation fields filled → no run created.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getTargets, startRun, ApiError } from "@/lib/api";
-import type { TargetConfig } from "@/lib/types";
-
-const SUITES = ["core"];
+import { getTargets, getSuites, startRun, ApiError } from "@/lib/api";
+import type { TargetConfig, SuiteInfo } from "@/lib/types";
 
 export function StartScanModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [targets, setTargets] = useState<TargetConfig[]>([]);
+  const [suites, setSuites] = useState<SuiteInfo[]>([
+    { name: "core", probes: 12, description: "" },
+  ]);
   const [targetId, setTargetId] = useState("");
   const [suite, setSuite] = useState("core");
   const [authorizedBy, setAuthorizedBy] = useState("");
@@ -28,6 +29,8 @@ export function StartScanModal({ onClose }: { onClose: () => void }) {
         if (t.length > 0) setTargetId(t[0].id);
       })
       .catch((e) => setError(String(e)));
+    // suite picker stays at core if the API is unreachable — scan still works
+    getSuites().then(setSuites).catch(() => {});
   }, []);
 
   const target = targets.find((t) => t.id === targetId);
@@ -95,8 +98,17 @@ export function StartScanModal({ onClose }: { onClose: () => void }) {
             onChange={(e) => setSuite(e.target.value)}
             className="w-full bg-[#0D0D0F] border border-border rounded-lg px-3 py-2 text-sm"
           >
-            {SUITES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {suites.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name} — {s.probes} probes
+              </option>
+            ))}
           </select>
+          {suites.find((s) => s.name === suite)?.description && (
+            <p className="text-xs text-faint mt-1">
+              {suites.find((s) => s.name === suite)?.description}
+            </p>
+          )}
         </Field>
 
         <div className="border-t border-border pt-3 space-y-3">

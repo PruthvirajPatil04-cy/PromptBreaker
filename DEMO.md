@@ -84,6 +84,22 @@ on) and already have one completed run each, so the dashboard shows the full
 ladder the moment you walk in. From Windows use `localhost:1808X` for the
 chat pages (or `172.28.99.44:1808X`).
 
+### Suite options (Start Scan dropdown)
+
+| Suite | Probes | Use on stage |
+|-------|--------|--------------|
+| `core` | 12 | the main story — full 9-category ladder above |
+| `quick` | 4 | fastest live run (~20 attempts): PI-001, SI-001, AG-001, OX-001 |
+| `jailbreak` | 4 | LLM01 instruction-override focus — YesMan scores 25.0 Critical here |
+| `privacy` | 3 | LLM02 leak/exfil — RecordsClerk drops from **83.33 Low (core) to 33.33 High** |
+| `agency` | 3 | LLM06/LLM10 tool abuse & cost — AutoAgent scores 0.0 Critical |
+| `safety` | 3 | LLM05/09/01 output, truth, business rules — YesMan 66.67 Moderate |
+
+Scores are recomputed over **only the categories that ran** — that's the
+talking point: same engine, same bot, different lens. Focus suites are
+compact JSON subsets of the core registry (`src/promptbreaker/probes/suites/`),
+so payloads live in exactly one place.
+
 ### Per-bot stage routine (~90 sec each)
 
 1. Open the bot's chat page. Judges see the persona + its demo API key.
