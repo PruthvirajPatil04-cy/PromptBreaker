@@ -13,7 +13,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from promptbreaker.engine.runner import RunResult
-from promptbreaker.models import Attempt, Evidence, Finding, Severity, Verdict
+from promptbreaker.models import (
+    TERMINAL_STATUSES,
+    Attempt,
+    Evidence,
+    Finding,
+    RunStatus,
+    Severity,
+    Verdict,
+)
 from promptbreaker.security.redact import redact
 from promptbreaker.store.models import AttemptRow, EvidenceRow, FindingRow, RunRow
 
@@ -107,6 +115,28 @@ async def set_run_status(
     if error:
         run.abort_reason = error[:500]
     await session.commit()
+
+
+async def fail_interrupted_runs(
+    session: AsyncSession, reason: str = "interrupted by API restart",
+) -> int:
+    """Startup recovery: runs left non-terminal are marked FAILED.
+
+    The engine holds tasks in memory only, so a restart orphans anything
+    mid-flight — without this those rows report as running forever.
+    """
+    rows = (
+        (await session.execute(
+            select(RunRow).where(RunRow.status.notin_([s.value for s in TERMINAL_STATUSES]))
+        )).scalars().all()
+    )
+    now = datetime.now(UTC)
+    for run in rows:
+        run.status = RunStatus.FAILED.value
+        run.abort_reason = reason
+        run.finished_at = run.finished_at or now
+    await session.commit()
+    return len(rows)
 
 
 async def list_runs(session: AsyncSession, limit: int = 50) -> list[RunRow]:

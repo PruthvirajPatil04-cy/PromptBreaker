@@ -35,6 +35,20 @@ export default function AuditPage() {
 
   const filtered = role ? events.filter((e) => e.role === role) : events;
 
+  const exportCsv = () => {
+    const esc = (c: string) => `"${c.replaceAll('"', '""')}"`;
+    const csv = [
+      ["ts", "role", "method", "path", "status"].join(","),
+      ...filtered.map((e) => [e.ts, e.role, e.method, e.path, String(e.status)].map(esc).join(",")),
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "promptbreaker-audit.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -55,6 +69,12 @@ export default function AuditPage() {
             <option value="viewer">viewer</option>
             <option value="anonymous">anonymous</option>
           </select>
+          <button
+            onClick={exportCsv}
+            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover"
+          >
+            Export CSV
+          </button>
           <button
             onClick={load}
             className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover"

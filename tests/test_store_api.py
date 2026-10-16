@@ -152,3 +152,28 @@ async def test_api_healthz():
         resp = await client.get("/healthz")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
+
+
+async def test_startup_recovery_marks_interrupted_runs_failed(db):
+    """A restart mid-run must leave a FAILED row, not a zombie QUEUED/EXECUTE."""
+    from promptbreaker.store.models import RunRow
+
+    factory = db
+    async with factory() as session:
+        session.add_all([
+            RunRow(suite="quick", target="http://x/v1", adapter="openai",
+                   status=RunStatus.EXECUTE.value, attested_by="Eng", attestation_ref="R-9"),
+            RunRow(suite="quick", target="http://x/v1", adapter="openai",
+                   status=RunStatus.DONE.value, attested_by="Eng", attestation_ref="R-9"),
+        ])
+        await session.commit()
+
+    async with factory() as session:
+        assert await repo.fail_interrupted_runs(session) == 1
+        rows = await repo.list_runs(session, limit=10)
+        failed = [r for r in rows if r.status == RunStatus.FAILED.value]
+        done = [r for r in rows if r.status == RunStatus.DONE.value]
+        assert len(failed) == 1 and len(done) == 1
+        assert failed[0].abort_reason and "restart" in failed[0].abort_reason
+        assert failed[0].finished_at is not None
+        assert await repo.fail_interrupted_runs(session) == 0  # second boot: no-op

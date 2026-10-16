@@ -125,6 +125,7 @@ class RunDetailOut(CamelModel):
     budget: BudgetOut
     findings: list[FindingOut] = Field(default_factory=list)
     evidence_chain_valid: bool = True
+    abort_reason: str = ""  # why a run failed (budget cap, restart, transport…)
 
 
 # ------------------------------------------------------------------ registries

@@ -4,6 +4,7 @@
 // findings appearing as the engine works.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getRunDetail, liveRunReport } from "@/lib/api";
 import type { RunDetail as RunDetailT } from "@/lib/types";
 import { Card, CardHeader, SeverityPill, StatusPill } from "@/components/ui/primitives";
@@ -15,6 +16,7 @@ type ReportFmt = "md" | "json" | "sarif";
 
 export default function RunDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
+  const router = useRouter();
   const [run, setRun] = useState<RunDetailT | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -52,7 +54,12 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           <div className="text-xs text-muted mt-1 font-mono">{run.runId} · {run.target}</div>
         </div>
         <div className="flex gap-3 items-center">
-          <button className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover">Re-run</button>
+          <button
+            onClick={() => router.push("/?rescan=1")}
+            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover"
+          >
+            Re-run
+          </button>
           <Link
             href={`/compare?a=${run.runId}`}
             className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover"
@@ -78,6 +85,13 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           </button>
         </div>
       </div>
+
+      {run.abortReason && !running && (
+        <div className="border border-amber-500/40 bg-amber-500/10 rounded-lg px-4 py-3 text-sm text-amber-200">
+          <span className="font-semibold">Run ended early: </span>
+          <span className="font-mono text-xs">{run.abortReason}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>

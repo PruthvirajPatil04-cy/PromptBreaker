@@ -24,6 +24,17 @@ export default function OverviewPage() {
   const [modal, setModal] = useState(false);
   const [view, setView] = useState<"score" | "trend">("score");
 
+  useEffect(() => {
+    // Re-run flow: run detail's "Re-run" lands here with ?rescan=1 so the
+    // Start Scan form opens immediately (API keys are never stored — a re-run
+    // always resupplies them, by design).
+    if (typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).has("rescan")) {
+      setModal(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   const load = useCallback(() => {
     getOverview().then((d) => { setData(d); setError(null); })
       .catch((e) => setError(String(e)));

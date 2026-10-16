@@ -80,6 +80,7 @@ export interface RunDetail {
   runId: string;
   name: string;
   status: RunStatus;
+  abortReason: string; // why it failed: budget cap, restart, transport…
   target: string;
   adapter: string;
   suite: string;

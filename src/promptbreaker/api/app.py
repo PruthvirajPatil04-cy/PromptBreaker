@@ -40,6 +40,14 @@ async def lifespan(app: FastAPI):
         from promptbreaker.store.db import init_db
         await init_db()
         log.info("store initialized")
+        # Startup recovery: anything mid-flight when the previous process died
+        # is finalized here, not left QUEUED/EXECUTE for eternity.
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            recovered = await repo.fail_interrupted_runs(session)
+        if recovered:
+            log.warning("startup recovery: %d interrupted run(s) marked FAILED", recovered)
     except Exception as exc:  # noqa: BLE001 — don't hard-crash the API on DB hiccups
         log.warning("store init deferred: %s", exc)
     yield
@@ -758,6 +766,7 @@ async def get_run(run_id: str) -> RunDetailOut:
             failed=c.failed, partial=c.partial, errors=c.errors,
         ) for c in cat_scores],
         budget=budget, findings=finding_outs, evidence_chain_valid=chain_ok,
+        abort_reason=(row.abort_reason if row is not None else "") or "",
     )
 
 
