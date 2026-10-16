@@ -139,8 +139,3 @@ export const logEvents: LogEvent[] = [
   { seq: 7, runId: "r-full-1", type: "probe.judged", ts: "2025-01-24T16:18:13Z", level: "error", probeId: "SI-002", detail: "verdict=FAIL severity=Critical canary_leak" },
   { seq: 8, runId: "r-full-1", type: "run.finished", ts: "2025-01-24T16:40:00Z", level: "info", detail: "status=DONE score=64.7" },
 ];
-
-export const projects = [
-  { id: "p-default", name: "Default" },
-  { id: "p-car", name: "Car Sales" },
-];

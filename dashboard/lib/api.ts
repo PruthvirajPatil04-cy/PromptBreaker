@@ -100,10 +100,6 @@ export async function getLogEvents(runId: string): Promise<LogEvent[]> {
     : live<LogEvent[]>(`/v1/runs/${runId}/events`);
 }
 
-export function getProjects() {
-  return mock.projects;
-}
-
 /** Health probe for the topbar badge (no API key required). */
 export async function health(): Promise<{ ok: boolean; version: string }> {
   return live("/healthz");
