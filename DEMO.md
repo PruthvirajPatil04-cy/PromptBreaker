@@ -130,6 +130,47 @@ so payloads live in exactly one place.
   correctly. `python demo/chatbots.py --selftest` proves all 588
   bot×probe×mutator combinations against the engine's real prefilter.
 
+## Deployment — hosted website + Windows app
+
+### Hosted website (live now)
+
+The whole app sits behind **one URL** — the Next dashboard proxies the
+engine (`/v1/*` → `127.0.0.1:8000` via `next.config.js` rewrites), so there
+is no second hostname and no CORS in any deployment.
+
+| | |
+|---|---|
+| URL | `https://queen-walked-informal-boots.trycloudflare.com` |
+| Login (site) | `demo` / `PromptBreaker2026` (basic auth, Next middleware) |
+| API key (in-app) | the same `.api_key` as local — baked into the bundle, behind the gate |
+
+- **Gate**: `PB_DEMO_BASIC` in the dashboard unit. Local hosts
+  (`localhost:3000`, `127.0.0.1:3000`, `172.28.99.44:3000`) are exempt, so
+  the on-stage demo never prompts. Everyone else gets a browser login.
+- **Tunnel**: `promptbreaker-tunnel.service` (cloudflared quick tunnel →
+  `:3000`). The URL is ephemeral: after a host restart it changes — read the
+  fresh one with `journalctl -u promptbreaker-tunnel -o cat | grep https`.
+- Everything was verified over the public URL end-to-end: gate 401 → login
+  200 → API 200 → full run POST → DONE (CreativeAI quick suite, 0.0 Critical).
+- For a permanent URL, put a Cloudflare named tunnel or a paid PaaS account
+  in front; nothing else in the app changes.
+
+### Windows application
+
+`windows/` holds a native **WebView2 desktop app** (pure Go, cross-compiled
+from this box with `windows/build.sh`: go-winres resources →
+`GOOS=windows go build` → NSIS installer).
+
+- `PromptBreaker-Setup.exe` — installer (Program Files, Desktop + Start
+  menu shortcuts, uninstaller, versioned icon)
+- `PromptBreaker.exe` — the app itself (also shipped as a zip)
+- Copied to **`C:\Users\prith\OneDrive\Desktop\PromptBreaker-Windows\`**
+  and committed under `windows/dist/` (downloadable from GitHub)
+- Connect order: local `localhost:3000` (native window) → hosted URL
+  (default browser, because its password gate needs one) → offline help
+  page with the WSL start commands. `config.json` next to the exe holds
+  both URLs and the login.
+
 ## Verifying live mode (before the audience arrives)
 
 ```bash

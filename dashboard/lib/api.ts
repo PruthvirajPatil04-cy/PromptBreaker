@@ -12,7 +12,10 @@ import type {
 import * as mock from "./mock";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_PB_USE_MOCK !== "false";
-const API_BASE = process.env.NEXT_PUBLIC_PB_API_BASE ?? "http://localhost:8000";
+// Empty = same-origin: requests hit the Next server and next.config rewrites
+// proxy them to the engine (works identically locally and behind a tunnel).
+// Set NEXT_PUBLIC_PB_API_BASE only to point at a remote engine directly.
+const API_BASE = process.env.NEXT_PUBLIC_PB_API_BASE ?? "";
 const API_KEY = process.env.NEXT_PUBLIC_PB_API_KEY ?? "";
 
 /** Start-scan input: target resolved from Targets, attestation is mandatory. */

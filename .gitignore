@@ -17,6 +17,8 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+# Windows app binaries ship with the repo
+!windows/dist/
 
 # Node / Next.js
 dashboard/node_modules/
