@@ -14,7 +14,7 @@ HOW IT CONNECTS (config.json sits next to PromptBreaker.exe)
                  offline; opens in your default browser because the hosted
                  site asks for a password
   publicUser /
-  publicPass     login for the hosted site (default: demo / PromptBreaker2026)
+  publicPass     login for the hosted site (default: cyberex / prithvi1999@)
 
   Hosted demo: https://queen-walked-informal-boots.trycloudflare.com
   The URL changes if the host PC restarts the tunnel - edit config.json

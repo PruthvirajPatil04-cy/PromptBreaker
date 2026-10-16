@@ -141,7 +141,7 @@ is no second hostname and no CORS in any deployment.
 | | |
 |---|---|
 | URL | `https://queen-walked-informal-boots.trycloudflare.com` |
-| Login (site) | `demo` / `PromptBreaker2026` (basic auth, Next middleware) |
+| Login (site) | `cyberex` / `prithvi1999@` (basic auth, Next middleware) |
 | API key (in-app) | the same `.api_key` as local — baked into the bundle, behind the gate |
 
 - **Gate**: `PB_DEMO_BASIC` in the dashboard unit. Local hosts
