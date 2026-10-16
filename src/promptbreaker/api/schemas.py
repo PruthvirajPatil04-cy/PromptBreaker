@@ -45,6 +45,7 @@ class OverallOut(CamelModel):
 class RecentRunOut(CamelModel):
     run_id: str
     name: str
+    target: str = ""
     executed_on: datetime | None = None
     probes: list[str] = Field(default_factory=list)
     passed: int = 0

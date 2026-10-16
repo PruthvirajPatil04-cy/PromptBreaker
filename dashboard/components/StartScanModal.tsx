@@ -46,6 +46,7 @@ export function StartScanModal({ onClose }: { onClose: () => void }) {
         adapter: target.adapter,
         suite,
         allowPrivate: target.allowPrivate,
+        apiKey: target.secretRef || undefined,
         attestation: {
           targetPattern: host,
           authorizedBy: authorizedBy.trim(),

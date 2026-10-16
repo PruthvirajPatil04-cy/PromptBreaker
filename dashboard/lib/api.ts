@@ -21,6 +21,7 @@ export interface StartRunInput {
   adapter: string;
   suite: string;
   allowPrivate: boolean;
+  apiKey?: string;         // target's stored credential, sent as Bearer
   attestation: {
     targetPattern: string;
     authorizedBy: string;

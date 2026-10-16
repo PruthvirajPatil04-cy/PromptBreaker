@@ -31,6 +31,7 @@ export interface OverallScore {
 export interface RecentRun {
   runId: string;
   name: string;
+  target: string;          // endpoint the run hit — lets the list scope per bot
   executedOn: string;
   probes: string[];        // first probe/category shown; extras become "+N"
   passed: number;

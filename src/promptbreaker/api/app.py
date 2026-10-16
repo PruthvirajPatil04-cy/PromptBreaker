@@ -214,6 +214,7 @@ async def _build_overview() -> OverviewOut:
         recent.append(RecentRunOut(
             run_id=r.id,
             name=_pretty(r.suite or "core") + " Scan",
+            target=r.target or "",
             executed_on=r.finished_at or r.created_at,
             probes=probes_used,
             passed=c.get("passed", 0), failed=c.get("failed", 0),

@@ -28,7 +28,7 @@ async def test_overview_keys_match_typescript_contract():
         "score", "band", "simulated", "successful", "categories", "lastRunAt", "trend"}
     for run in body["recentRuns"]:
         assert set(run) == {
-            "runId", "name", "executedOn", "probes",
+            "runId", "name", "target", "executedOn", "probes",
             "passed", "failed", "errors", "progressPct", "status", "source"}
         break
     for group in body["suitesByCategory"]:

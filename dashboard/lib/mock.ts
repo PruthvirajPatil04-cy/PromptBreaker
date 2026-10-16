@@ -23,10 +23,10 @@ export const overview: OverviewPayload = {
     ],
   },
   recentRuns: [
-    { runId: "r-xss-1", name: "XSS", executedOn: "2025-09-05T17:50:00Z", probes: ["XSS"], passed: 0, failed: 0, errors: 0, progressPct: 0, status: "QUEUED", source: "manual" },
-    { runId: "r-full-1", name: "Full Vulnerability Scan", executedOn: "2025-01-24T16:18:00Z", probes: ["AdviceGuardrailCheck", "Jailbreak", "PII", "PromptLeak", "Roleplay", "ToolAbuse", "RagPoison", "Encoding", "Flood", "Hijack", "Confab", "Agency"], passed: 3847, failed: 1122, errors: 3, progressPct: 87, status: "DONE", source: "manual" },
-    { runId: "r-gh-1", name: "GitHub CI/CD Test Run", executedOn: "2024-11-22T16:15:00Z", probes: ["Competitor Check"], passed: 111, failed: 176, errors: 1, progressPct: 100, status: "DONE", source: "ci-github" },
-    { runId: "r-bb-1", name: "Bitbucket CI/CD Test Run", executedOn: "2024-11-22T13:02:00Z", probes: ["Competitor Check"], passed: 113, failed: 173, errors: 2, progressPct: 100, status: "DONE", source: "ci-bitbucket" },
+    { runId: "r-xss-1", name: "XSS", target: "https://demo.example.com/v1", executedOn: "2025-09-05T17:50:00Z", probes: ["XSS"], passed: 0, failed: 0, errors: 0, progressPct: 0, status: "QUEUED", source: "manual" },
+    { runId: "r-full-1", name: "Full Vulnerability Scan", target: "https://demo.example.com/v1", executedOn: "2025-01-24T16:18:00Z", probes: ["AdviceGuardrailCheck", "Jailbreak", "PII", "PromptLeak", "Roleplay", "ToolAbuse", "RagPoison", "Encoding", "Flood", "Hijack", "Confab", "Agency"], passed: 3847, failed: 1122, errors: 3, progressPct: 87, status: "DONE", source: "manual" },
+    { runId: "r-gh-1", name: "GitHub CI/CD Test Run", target: "https://demo.example.com/v1", executedOn: "2024-11-22T16:15:00Z", probes: ["Competitor Check"], passed: 111, failed: 176, errors: 1, progressPct: 100, status: "DONE", source: "ci-github" },
+    { runId: "r-bb-1", name: "Bitbucket CI/CD Test Run", target: "https://demo.example.com/v1", executedOn: "2024-11-22T13:02:00Z", probes: ["Competitor Check"], passed: 113, failed: 173, errors: 2, progressPct: 100, status: "DONE", source: "ci-bitbucket" },
   ],
   suitesByCategory: [
     {
