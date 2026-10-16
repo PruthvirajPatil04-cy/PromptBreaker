@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     max_run_tokens: int = 2_000_000
     max_run_cost_usd: float = 25.0
     run_timeout_seconds: int = 1800
+    # Parallel probe execution — semaphore-bounded fan-out inside one run.
+    run_concurrency: int = 4
 
     # Evidence
     evidence_hmac_key: str = "dev-only-hmac-key-rotate-in-prod"
@@ -42,6 +44,10 @@ class Settings(BaseSettings):
     # Alerts — Slack/Discord-compatible webhook fired when a run finishes with
     # High or Critical findings. Empty disables alerts.
     webhook_url: str = ""
+
+    # Report branding — appears in Markdown/JSON/SARIF report headers.
+    report_org: str = "PromptBreaker AI"
+    report_title: str = ""
 
     # SSRF guard — private ranges blocked unless explicitly allowed per target.
     allow_private_targets: bool = False

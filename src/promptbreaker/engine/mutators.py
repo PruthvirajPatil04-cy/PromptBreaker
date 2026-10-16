@@ -82,9 +82,37 @@ ALL_MUTATORS = [
     mut_leetspeak, mut_prefix_disarm, mut_split_instruction,
 ]
 
+# Name → function. Names are the stable key for adaptive ordering stats
+# ("which mutator actually defeated this target?") and for reports.
+MUTATORS_BY_NAME: dict[str, object] = {
+    "b64": mut_base64_wrap,
+    "zero_width": mut_zero_width,
+    "nfkc": mut_nfkc_normalize,
+    "leet": mut_leetspeak,
+    "decoy": mut_prefix_disarm,
+    "split": mut_split_instruction,
+}
+MUTATOR_NAMES = list(MUTATORS_BY_NAME)
+
 
 def mutate(p: Probe, seed: int, budget: int) -> list[Probe]:
     """Deterministically pick up to `budget` mutations for a probe."""
+    return [probe for _, probe in mutate_named(p, seed, budget)]
+
+
+def mutate_named(
+    p: Probe, seed: int, budget: int, order: list[str] | None = None,
+) -> list[tuple[str, Probe]]:
+    """Like mutate(), but returns (mutator_name, probe) pairs.
+
+    `order` lets the adaptive policy bias selection toward mutators with a
+    proven track record against this target. Unseen mutators always sort
+    first (exploration before exploitation) — the caller passes the order,
+    this function stays a pure function.
+    """
     rng = random.Random(seed)  # noqa: S311 — mutation-order RNG, never cryptographic
-    picks = rng.sample(ALL_MUTATORS, min(budget, len(ALL_MUTATORS)))
-    return [m(p) for m in picks]
+    names = [n for n in (order or MUTATOR_NAMES) if n in MUTATORS_BY_NAME]
+    # keep any mutators the custom order omitted, so coverage never shrinks
+    names += [n for n in MUTATOR_NAMES if n not in names]
+    picks = rng.sample(names, min(budget, len(names)))
+    return [(n, MUTATORS_BY_NAME[n](p)) for n in picks]  # type: ignore[operator]

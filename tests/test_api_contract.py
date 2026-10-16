@@ -123,10 +123,13 @@ async def test_run_detail_keys_match_typescript_contract():
     assert set(body) == {
         "runId", "name", "status", "target", "adapter", "suite", "executedOn",
         "score", "band", "simulated", "successful",
-        "categories", "budget", "findings", "evidenceChainValid", "abortReason"}
+        "categories", "budget", "findings", "evidenceChainValid", "abortReason",
+        "judgeSummary", "attemptCount", "resumedFrom"}
     assert set(body["budget"]) == {"probes", "tokens", "costUsd"}
     for slot in body["budget"].values():
         assert set(slot) == {"used", "cap"}
+    assert set(body["judgeSummary"]) == {
+        "prefilter", "llm", "none", "dual", "manipulation", "humanReview"}
 
 
 async def test_events_json_is_array_of_log_events():

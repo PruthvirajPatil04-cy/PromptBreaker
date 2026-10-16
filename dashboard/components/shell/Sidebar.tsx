@@ -17,14 +17,22 @@ const SECTIONS: { heading: string; items: { href: string; label: string; icon: s
   },
   {
     heading: "REMEDIATION",
-    items: [{ href: "/hardening", label: "Prompt Hardening", icon: "shield" }],
+    items: [
+      { href: "/hardening", label: "Prompt Hardening", icon: "shield" },
+      { href: "/review", label: "Review Queue", icon: "review" },
+    ],
   },
   {
     heading: "MONITORING",
     items: [
       { href: "/logs", label: "Log Analysis", icon: "activity" },
       { href: "/audit", label: "Audit Log", icon: "audit" },
+      { href: "/schedules", label: "Scheduled Scans", icon: "calendar" },
     ],
+  },
+  {
+    heading: "SETTINGS",
+    items: [{ href: "/api-keys", label: "API Keys", icon: "key" }],
   },
 ];
 
@@ -38,6 +46,9 @@ const ICON_PATHS: Record<string, string> = {
   shield: "M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z",
   activity: "M22 12h-4l-3 9L9 3l-3 9H2",
   audit: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M9 13h6M9 17h6",
+  review: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+  calendar: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z",
+  key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
 };
 
 export function Sidebar() {
@@ -76,9 +87,9 @@ export function Sidebar() {
         ))}
       </div>
       <div className="px-5 py-4 border-t border-border text-[11px] text-faint leading-relaxed">
-        © 2025 PromptBreaker AI
+        © 2026 PromptBreaker AI
         <br />
-        Version 1.1.0
+        Version 1.2.0
       </div>
     </aside>
   );

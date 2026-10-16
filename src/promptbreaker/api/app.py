@@ -18,7 +18,7 @@ import json
 import logging
 import re
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
@@ -50,9 +50,12 @@ async def lifespan(app: FastAPI):
             log.warning("startup recovery: %d interrupted run(s) marked FAILED", recovered)
     except Exception as exc:  # noqa: BLE001 — don't hard-crash the API on DB hiccups
         log.warning("store init deferred: %s", exc)
+    scheduler = asyncio.create_task(_scheduler_loop())
     yield
+    scheduler.cancel()
 from promptbreaker.adapters.base import build_adapter
 from promptbreaker.api.schemas import (
+    AttestationIn,
     AuditOut,
     BudgetOut,
     BudgetSlotOut,
@@ -64,30 +67,42 @@ from promptbreaker.api.schemas import (
     ComplianceOut,
     FindingOut,
     HardeningOut,
+    KeyCreatedOut,
+    KeyIn,
+    KeyOut,
     LogEventOut,
     OverallOut,
     OverviewOut,
     ProbeOut,
     RecentRunOut,
+    ReviewItemOut,
     RunDetailOut,
+    ScheduleIn,
+    ScheduleOut,
+    SchedulePatchIn,
     SuiteCardOut,
     SuiteOut,
     TargetIn,
     TargetOut,
+    TriageIn,
+    VerifyTargetOut,
 )
 from promptbreaker.config import settings
+from promptbreaker.engine.adaptive import MutationPolicy
 from promptbreaker.engine.events import event_log
 from promptbreaker.engine.runner import Engine, RunResult
 from promptbreaker.errors import ScopeError
 from promptbreaker.judge.core import LlmJudge
 from promptbreaker.models import (
     TERMINAL_STATUSES,
+    Attempt,
     Probe,
     RiskBand,
     RunBudget,
     RunStatus,
     ScopeAttestation,
     Severity,
+    TriageState,
     Verdict,
 )
 from promptbreaker.probes.registry import (
@@ -147,7 +162,7 @@ async def require_api_key(
     x_api_key: str = Header(default=""), key: str = "",
 ) -> str:
     """Read access — returns the caller's role (admin | viewer)."""
-    role = _resolve_role(_presented_key(x_api_key, key))
+    role = await resolve_role(_presented_key(x_api_key, key))
     if role is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
     return role
@@ -157,7 +172,7 @@ async def require_admin(
     x_api_key: str = Header(default=""), key: str = "",
 ) -> str:
     """Write access — mutating endpoints demand the admin role."""
-    role = _resolve_role(_presented_key(x_api_key, key))
+    role = await resolve_role(_presented_key(x_api_key, key))
     if role is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
     if role != "admin":
@@ -166,13 +181,83 @@ async def require_admin(
     return role
 
 
+# DB-issued dashboard keys (see /v1/keys) resolve through a short cache so
+# every request doesn't hit the store. Negative results are cached too.
+_KEY_CACHE: dict[str, tuple[str | None, float]] = {}
+_KEY_CACHE_TTL = 30.0
+_DB_KEYS_STATE = {"checked_at": 0.0, "exists": False}
+
+
+def _reset_key_cache() -> None:
+    """Called on key create/revoke so changes land immediately."""
+    _KEY_CACHE.clear()
+    _DB_KEYS_STATE["checked_at"] = 0.0
+
+
+async def _db_keys_present() -> bool:
+    """True when at least one active DB-issued key exists.
+
+    Dev mode (no env keys AND no DB keys) is the only open-door mode. Once
+    anyone issues a dashboard key, presented keys must actually match.
+    """
+    import time as _time
+
+    now = _time.monotonic()
+    if now - _DB_KEYS_STATE["checked_at"] < _KEY_CACHE_TTL:
+        return _DB_KEYS_STATE["exists"]
+    exists = False
+    try:
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            exists = any(r.revoked_at is None for r in await repo.list_api_keys(session))
+    except Exception:  # noqa: BLE001 — store down ⇒ fall back to env-only mode
+        log.debug("db key existence check failed", exc_info=True)
+    _DB_KEYS_STATE.update(checked_at=now, exists=exists)
+    return exists
+
+
+async def resolve_role(candidate: str) -> str | None:
+    """Env-configured keys first (fast path), then DB-issued keys.
+
+    Revocation takes effect within _KEY_CACHE_TTL seconds.
+    """
+    if settings.api_keys:
+        role = _resolve_role(candidate)
+        if role is not None:
+            return role
+    elif not candidate and not await _db_keys_present():
+        return "admin"  # dev mode: no env keys, no DB keys — open door
+
+    if not candidate:
+        return None
+
+    import time as _time
+
+    digest = hashlib.sha256(candidate.encode()).hexdigest()
+    cached = _KEY_CACHE.get(digest)
+    if cached and cached[1] > _time.monotonic():
+        return cached[0]
+    found_role = None
+    try:
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            row = await repo.find_api_key(session, digest)
+        found_role = row.role if row else None
+    except Exception:  # noqa: BLE001 — store down ⇒ DB keys unavailable, not open
+        log.debug("db key lookup failed", exc_info=True)
+    _KEY_CACHE[digest] = (found_role, _time.monotonic() + _KEY_CACHE_TTL)
+    return found_role
+
+
 @app.middleware("http")
 async def audit_api_calls(request: Request, call_next):
     """Append one audit row per /v1/* request: who (role), what, when, result."""
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/v1/"):
-        role = _resolve_role(
+        role = await resolve_role(
             _presented_key(request.headers.get("x-api-key", ""),
                            request.query_params.get("key", ""))
         ) or "anonymous"
@@ -192,13 +277,6 @@ async def audit_api_calls(request: Request, call_next):
 
 # ---------------------------------------------------------------- schemas
 
-class AttestationIn(CamelModel):
-    target_pattern: str
-    authorized_by: str
-    reference: str
-    expires: datetime
-
-
 class RunRequest(CamelModel):
     target: str
     adapter: str = "openai"
@@ -209,6 +287,9 @@ class RunRequest(CamelModel):
     seed: int = 0
     budget: RunBudget = Field(default_factory=RunBudget)
     attestation: AttestationIn
+    # v1.2 upgrades
+    system_context: str = ""   # hardened system prompt injected into every probe
+    concurrency: int = 0       # 0 → settings.run_concurrency
 
 
 class CreateRunOut(CamelModel):
@@ -459,9 +540,12 @@ async def metrics() -> Response:
     try:
         async with get_session_factory()() as session:
             counts = await repo.metrics_counts(session)
+            review_depth = await repo.review_queue_depth(session)
+            schedules = await repo.list_schedules(session)
     except Exception:  # noqa: BLE001 — metrics degrade to empty, never 500
         log.debug("metrics store read failed", exc_info=True)
         counts = {"runs": {}, "findings": {}, "attempts": {}}
+        review_depth, schedules = 0, []
 
     lines = [
         "# HELP pb_build_info Build metadata.",
@@ -470,6 +554,13 @@ async def metrics() -> Response:
         "# HELP pb_judge_llm_up 1 when the LLM judge endpoint is reachable.",
         "# TYPE pb_judge_llm_up gauge",
         f"pb_judge_llm_up {await _judge_up()}",
+        "# HELP pb_review_queue_depth Open Critical/High findings awaiting triage.",
+        "# TYPE pb_review_queue_depth gauge",
+        f"pb_review_queue_depth {review_depth}",
+        "# HELP pb_schedules Configured scheduled scans by state.",
+        "# TYPE pb_schedules gauge",
+        f'pb_schedules{{enabled="true"}} {sum(1 for s in schedules if s.enabled)}',
+        f'pb_schedules{{enabled="false"}} {sum(1 for s in schedules if not s.enabled)}',
     ]
     for name, help_text, key, label in (
         ("pb_runs_total", "Total runs by status.", "runs", "status"),
@@ -490,9 +581,55 @@ async def get_overview() -> OverviewOut:
     return await _build_overview()
 
 
-@app.post("/v1/runs", status_code=202, response_model=CreateRunOut,
-          dependencies=[Depends(require_admin)])
-async def create_run(req: RunRequest) -> CreateRunOut:
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite hands back naive datetimes; normalize to UTC for comparisons."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
+async def _persist_attempt(attempt: Attempt) -> None:
+    """Incremental persistence hook: one row per judged attempt, immediately.
+
+    A crash mid-run keeps everything already judged (and the resume flow can
+    see exactly which probes executed). Never raises into the engine.
+    """
+    try:
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            await repo.save_attempt(session, attempt)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("incremental attempt persist failed for %s: %s", attempt.id, exc)
+
+
+async def _load_policy(target: str) -> MutationPolicy:
+    try:
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            return MutationPolicy.from_rows(
+                await repo.load_mutation_stats(session, target)
+            )
+    except Exception:  # noqa: BLE001 — no stats yet ⇒ unbiased ordering
+        return MutationPolicy()
+
+
+async def _save_policy(target: str, policy: MutationPolicy) -> None:
+    try:
+        from promptbreaker.store import repo
+        from promptbreaker.store.db import get_session_factory
+        async with get_session_factory()() as session:
+            await repo.save_mutation_stats(session, target, policy.rows())
+    except Exception:  # noqa: BLE001 — losing stats must not fail the run
+        log.debug("mutation stats not persisted for %s", target)
+
+
+async def _start_run(
+    req: RunRequest, *, resume_of: str = "", probes: list[Probe] | None = None,
+) -> CreateRunOut:
+    """Create + launch a run. Shared by POST /v1/runs, /resume, and the
+    scheduler, so every entry point gets the same gates and plumbing."""
     attestation = ScopeAttestation(**req.attestation.model_dump())
     host = (urlparse(req.target).hostname or req.target).lower()
 
@@ -509,6 +646,12 @@ async def create_run(req: RunRequest) -> CreateRunOut:
         suite=req.suite,
         llm_judge=LlmJudge(settings.judge_base_url, settings.judge_api_key, settings.judge_model),
         seed=req.seed,
+        concurrency=req.concurrency,
+        probes=probes,
+        system_context=req.system_context,
+        target_label=host,
+        mutation_policy=await _load_policy(host),
+        on_attempt=_persist_attempt,
     )
     run_id = engine.run_id
     _RUNS[run_id] = {"status": RunStatus.QUEUED.value, "engine": engine, "result": None,
@@ -525,6 +668,7 @@ async def create_run(req: RunRequest) -> CreateRunOut:
                 session, run_id=run_id, suite=req.suite, target=req.target,
                 adapter=req.adapter, attested_by=attestation.authorized_by,
                 attestation_ref=attestation.reference,
+                resumed_from=resume_of or None,
             )
     except Exception as exc:  # noqa: BLE001 — DB hiccup must not lose the run
         log.warning("run row not persisted at creation: %s", exc)
@@ -573,6 +717,9 @@ async def create_run(req: RunRequest) -> CreateRunOut:
             except Exception:  # noqa: BLE001
                 log.exception("status fallback for %s also failed", run_id)
 
+        # adaptive memory: which mutators beat this target — store for next run
+        await _save_policy(host, engine.mutation_policy or MutationPolicy())
+
         # alerting: best-effort, never blocks or fails the run
         if result is not None:
             asyncio.create_task(_alert_run(run_id, result))
@@ -580,6 +727,111 @@ async def create_run(req: RunRequest) -> CreateRunOut:
     asyncio.create_task(_execute())
     return CreateRunOut(run_id=run_id, status=RunStatus.QUEUED.value,
                         events_url=f"/v1/runs/{run_id}/events")
+
+
+@app.post("/v1/runs", status_code=202, response_model=CreateRunOut,
+          dependencies=[Depends(require_admin)])
+async def create_run(req: RunRequest) -> CreateRunOut:
+    return await _start_run(req)
+
+
+@app.post("/v1/runs/{run_id}/resume", status_code=202, response_model=CreateRunOut,
+          dependencies=[Depends(require_admin)])
+async def resume_run(run_id: str) -> CreateRunOut:
+    """Resume a FAILED/CANCELED run: re-plan only the probes that never
+    executed, in a fresh run linked back to the original.
+
+    Attestation: the resume action is admin-only and audited, so it carries
+    the original run's authorized_by/reference forward under a fresh 24h
+    expiry — re-authorization is the click itself.
+    """
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+
+    async with get_session_factory()() as session:
+        row = await repo.get_run(session, run_id)
+        attempts = await repo.get_attempts(session, run_id) if row else []
+    if row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if row.status not in ("FAILED", "CANCELED"):
+        raise HTTPException(status_code=409, detail="only failed or canceled runs can be resumed")
+
+    try:
+        planned = load_suite(row.suite or "core")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=f"suite unavailable: {exc}") from exc
+    executed = {a.probe_id.split("#")[0] for a in attempts}
+    remaining = [p for p in planned if p.id not in executed]
+    if not remaining:
+        raise HTTPException(
+            status_code=409, detail="nothing to resume — all planned probes executed",
+        )
+
+    host = (urlparse(row.target).hostname or row.target).lower()
+    req = RunRequest(
+        target=row.target, adapter=row.adapter, suite=row.suite or "core",
+        attestation=AttestationIn(
+            target_pattern=host,
+            authorized_by=row.attested_by or "resume (admin)",
+            reference=row.attestation_ref or f"resume-of:{run_id}",
+            expires=datetime.now(UTC) + timedelta(hours=24),
+        ),
+    )
+    return await _start_run(req, resume_of=run_id, probes=remaining)
+
+
+# ---------------------------------------------------------------- scheduler
+
+_SCHEDULER_TICK_SECONDS = 15
+
+
+async def _scheduler_loop() -> None:
+    """In-process scheduler for /v1/schedules. Bounded tick, never crashes."""
+    while True:
+        await asyncio.sleep(_SCHEDULER_TICK_SECONDS)
+        try:
+            await _fire_due_schedules()
+        except Exception:  # noqa: BLE001 — a bad tick must not kill the loop
+            log.debug("scheduler tick failed", exc_info=True)
+
+
+async def _fire_due_schedules() -> None:
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+
+    now = datetime.now(UTC)
+    async with get_session_factory()() as session:
+        due = await repo.due_schedules(session, now)
+        pairs = [(s, await repo.get_target(session, s.target_id)) for s in due]
+
+    for sched, target in pairs:
+        error = ""
+        run_id = ""
+        expires = _aware(sched.attestation_expires)
+        if target is None:
+            error = "target deleted"
+        elif expires is not None and expires <= now:
+            error = "attestation expired — recreate the schedule"
+        else:
+            req = RunRequest(
+                target=target.endpoint, adapter=target.adapter, suite=sched.suite,
+                allow_private=bool(target.allow_private),
+                api_key=target.secret_ref or "",
+                attestation=AttestationIn(
+                    target_pattern=(urlparse(target.endpoint).hostname or target.endpoint).lower(),
+                    authorized_by=sched.attested_by or "scheduler",
+                    reference=sched.attestation_ref or f"schedule:{sched.id}",
+                    expires=expires or (now + timedelta(hours=1)),
+                ),
+            )
+            try:
+                out = await _start_run(req)
+                run_id, error = out.run_id, ""
+                log.info("schedule %s fired run %s", sched.id, run_id)
+            except HTTPException as exc:
+                error = str(exc.detail)
+        async with get_session_factory()() as session:
+            await repo.mark_schedule_fired(session, sched.id, run_id=run_id, error=error)
 
 
 @app.get("/v1/suites", dependencies=[Depends(require_api_key)])
@@ -755,7 +1007,19 @@ async def get_run(run_id: str) -> RunDetailOut:
             judge_manipulation=bool(att.judge_manipulation) if att else False,
             evidence_sha256=ev_sha[:12] + "…" if ev_sha else "",
             needs_human_review=bool(f.needs_human_review),
+            triage_state=f.triage_state or "open",
+            triage_note=f.triage_note or "",
         ))
+
+    # per-run judge breakdown: which engine decided each verdict (A4 panel)
+    judge_summary = {"prefilter": 0, "llm": 0, "none": 0, "dual": 0,
+                     "manipulation": 0, "humanReview": 0}
+    for a in attempts:
+        key = a.judge_engine or "none"
+        judge_summary[key] = judge_summary.get(key, 0) + 1
+        if a.judge_manipulation:
+            judge_summary["manipulation"] += 1
+    judge_summary["humanReview"] = sum(1 for f in findings if f.needs_human_review)
 
     return RunDetailOut(
         run_id=run_id, name=_pretty(suite) + " Scan", status=status_val,
@@ -767,6 +1031,9 @@ async def get_run(run_id: str) -> RunDetailOut:
         ) for c in cat_scores],
         budget=budget, findings=finding_outs, evidence_chain_valid=chain_ok,
         abort_reason=(row.abort_reason if row is not None else "") or "",
+        judge_summary=judge_summary,
+        attempt_count=len(attempts),
+        resumed_from=(row.resumed_from if row is not None else "") or "",
     )
 
 
@@ -1195,3 +1462,263 @@ async def cancel_run(run_id: str) -> dict:
     except Exception:  # noqa: BLE001, S110 — best-effort status write
         pass
     return {"runId": run_id, "status": RunStatus.CANCELED.value}
+
+
+# ------------------------------------------------------------ target health
+
+@app.post("/v1/targets/{target_id}/verify", response_model=VerifyTargetOut,
+          dependencies=[Depends(require_admin)])
+async def verify_target(target_id: str) -> VerifyTargetOut:
+    """Pre-stage health check: one harmless completion round-trip.
+
+    Proves the endpoint answers, the credential works, and the shape parses —
+    the three things that fail live on stage. Never fires a probe.
+    """
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+
+    async with get_session_factory()() as session:
+        row = await repo.get_target(session, target_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="target not found")
+
+    adapter = build_adapter(
+        row.adapter, row.endpoint, allow_private=bool(row.allow_private),
+        model="default", api_key=row.secret_ref or "",
+    )
+    try:
+        resp = await adapter.complete([{"role": "user", "content": "ping"}])
+        ok, detail, latency = True, (resp.text[:160] or "(empty reply)"), resp.latency_ms
+    except Exception as exc:  # noqa: BLE001 — the error IS the answer here
+        ok, detail, latency = False, str(exc)[:300], 0
+
+    async with get_session_factory()() as session:
+        await repo.set_target_verified(session, target_id, ok)
+    return VerifyTargetOut(target_id=target_id, verified=ok, latency_ms=latency, detail=detail)
+
+
+# ------------------------------------------------------------------- RBAC keys
+
+_KEY_ROLE_VALUES = {"admin", "viewer"}
+
+
+def _key_out(row) -> KeyOut:  # noqa: ANN001 — ApiKeyRow without a hard import cycle
+    return KeyOut(
+        id=row.id, name=row.name, prefix=row.prefix, role=row.role,
+        created_at=row.created_at, created_by=row.created_by,
+        revoked=row.revoked_at is not None,
+    )
+
+
+@app.get("/v1/keys", dependencies=[Depends(require_admin)])
+async def list_keys() -> dict:
+    """Dashboard-issued API keys. Env-configured keys are hash-only in .env
+    and cannot be enumerated — manage those through configuration."""
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        rows = await repo.list_api_keys(session)
+    return {"keys": [_key_out(r) for r in rows]}
+
+
+@app.post("/v1/keys", response_model=KeyCreatedOut, status_code=201,
+          dependencies=[Depends(require_admin)])
+async def create_key(
+    req: KeyIn, x_api_key: str = Header(default=""), key: str = "",
+) -> KeyCreatedOut:
+    """Issue an API key. The plaintext is returned exactly once — only its
+    sha256 is stored, so it cannot be recovered later."""
+    import secrets as _secrets
+
+    role = (req.role or "viewer").strip().lower()
+    if role not in _KEY_ROLE_VALUES:
+        raise HTTPException(status_code=422, detail="role must be admin or viewer")
+    if not req.name.strip():
+        raise HTTPException(status_code=422, detail="name is required")
+
+    plaintext = "pbk_" + _secrets.token_hex(16)
+    digest = hashlib.sha256(plaintext.encode()).hexdigest()
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        row = await repo.add_api_key(
+            session, name=req.name.strip(), key_hash=digest,
+            prefix=plaintext[:11], role=role,
+            created_by=(await resolve_role(_presented_key(x_api_key, key))) or "admin",
+        )
+    _reset_key_cache()  # new key resolves immediately
+    out = _key_out(row)
+    return KeyCreatedOut(**out.model_dump(), key=plaintext)
+
+
+@app.delete("/v1/keys/{key_id}", dependencies=[Depends(require_admin)])
+async def revoke_key(key_id: str) -> dict:
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        revoked = await repo.revoke_api_key(session, key_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="key not found or already revoked")
+    _reset_key_cache()  # revocation lands within the request
+    return {"revoked": key_id}
+
+
+# ---------------------------------------------------------------- triage + review
+
+@app.patch("/v1/findings/{finding_id}", response_model=FindingOut,
+           dependencies=[Depends(require_admin)])
+async def triage_finding(finding_id: str, req: TriageIn) -> FindingOut:
+    """Human disposition: open → accepted_risk | false_positive | patched.
+
+    False positives drop out of the review queue and are annotated on the
+    finding forever — triage history is part of the audit story.
+    """
+    if req.triage_state not in {s.value for s in TriageState}:
+        raise HTTPException(status_code=422, detail=f"invalid triage state {req.triage_state!r}")
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        row = await repo.set_finding_triage(
+            session, finding_id, state=req.triage_state,
+            note=req.triage_note, triaged_by="dashboard",
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="finding not found")
+        attempt = next(
+            (a for a in await repo.get_attempts(session, row.run_id) if a.id == row.attempt_id),
+            None,
+        )
+    probe_map = {p.id: p for p in core_probes()}
+    return FindingOut(
+        id=row.id, run_id=row.run_id, attempt_id=row.attempt_id, title=row.title,
+        category=_pretty(row.category), owasp=_finding_owasp(
+            attempt.probe_id if attempt else "", probe_map) or row.owasp,
+        severity=row.severity, verdict=row.verdict, quoted_span=row.quoted_span,
+        judge_rationale=row.judge_rationale,
+        judge_engine=attempt.judge_engine if attempt else "",
+        judge_manipulation=bool(attempt.judge_manipulation) if attempt else False,
+        evidence_sha256=(row.evidence_sha256 or "")[:12],
+        needs_human_review=bool(row.needs_human_review),
+        triage_state=row.triage_state or "open", triage_note=row.triage_note or "",
+    )
+
+
+@app.get("/v1/review", dependencies=[Depends(require_api_key)])
+async def get_review() -> dict:
+    """Review queue: open Critical/High findings awaiting a human call."""
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+
+    probe_map = {p.id: p for p in core_probes()}
+    async with get_session_factory()() as session:
+        rows = await repo.list_review_findings(session)
+        run_ids = list({r.run_id for r in rows})
+        attempts_by_run: dict[str, dict[str, object]] = {}
+        for rid in run_ids:
+            attempts_by_run[rid] = {a.id: a for a in await repo.get_attempts(session, rid)}
+        targets = {
+            r.id: r.target for r in
+            ((await repo.list_runs(session, limit=500)) if run_ids else [])
+            if r.id in set(run_ids)
+        }
+
+    items: list[ReviewItemOut] = []
+    for row in rows:
+        att = attempts_by_run.get(row.run_id, {}).get(row.attempt_id)
+        items.append(ReviewItemOut(
+            id=row.id, run_id=row.run_id, attempt_id=row.attempt_id,
+            title=row.title, category=_pretty(row.category),
+            owasp=_finding_owasp(att.probe_id if att else "", probe_map) or row.owasp,
+            severity=row.severity, verdict=row.verdict, quoted_span=row.quoted_span,
+            judge_rationale=row.judge_rationale,
+            judge_engine=getattr(att, "judge_engine", "") if att else "",
+            judge_manipulation=bool(getattr(att, "judge_manipulation", False)) if att else False,
+            evidence_sha256=(row.evidence_sha256 or "")[:12],
+            needs_human_review=bool(row.needs_human_review),
+            triage_state=row.triage_state or "open", triage_note=row.triage_note or "",
+            target=targets.get(row.run_id, ""), created_at=row.created_at,
+        ))
+    return {"findings": items}
+
+
+# ---------------------------------------------------------------- schedules
+
+@app.get("/v1/schedules", dependencies=[Depends(require_api_key)])
+async def list_schedules_ep() -> dict:
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        rows = await repo.list_schedules(session)
+    return {"schedules": [
+        ScheduleOut(
+            id=r.id, name=r.name, target_id=r.target_id, suite=r.suite,
+            interval_minutes=r.interval_minutes, enabled=bool(r.enabled),
+            attested_by=r.attested_by, attestation_ref=r.attestation_ref,
+            attestation_expires=_aware(r.attestation_expires),
+            last_run_at=_aware(r.last_run_at), last_run_id=r.last_run_id,
+            last_error=r.last_error or "", next_run_at=_aware(r.next_run_at),
+        ) for r in rows
+    ]}
+
+
+@app.post("/v1/schedules", response_model=ScheduleOut, status_code=201,
+          dependencies=[Depends(require_admin)])
+async def create_schedule(req: ScheduleIn) -> ScheduleOut:
+    """Recurring scan. The schedule carries its own scope attestation —
+    when it expires, firing stops until it's recreated."""
+    if req.interval_minutes < 1:
+        raise HTTPException(status_code=422, detail="interval_minutes must be >= 1")
+    try:
+        attestation = ScopeAttestation(**req.attestation.model_dump())
+    except Exception as exc:  # noqa: BLE001 — surface pydantic errors as 422
+        raise HTTPException(status_code=422, detail=f"invalid attestation: {exc}") from exc
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        target = await repo.get_target(session, req.target_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="target not found")
+        host = (urlparse(target.endpoint).hostname or target.endpoint).lower()
+        if not attestation.is_valid(host):
+            raise HTTPException(status_code=403, detail="target outside authorized scope")
+        try:
+            load_suite(req.suite)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        row = await repo.add_schedule(
+            session, name=req.name.strip() or "scheduled scan",
+            target_id=req.target_id, suite=req.suite,
+            interval_minutes=req.interval_minutes,
+            attested_by=attestation.authorized_by,
+            attestation_ref=attestation.reference,
+            attestation_expires=attestation.expires,
+        )
+    return ScheduleOut(
+        id=row.id, name=row.name, target_id=row.target_id, suite=row.suite,
+        interval_minutes=row.interval_minutes, enabled=bool(row.enabled),
+        attested_by=row.attested_by, attestation_ref=row.attestation_ref,
+        attestation_expires=_aware(row.attestation_expires),
+        last_run_at=None, last_run_id="", last_error="", next_run_at=_aware(row.next_run_at),
+    )
+
+
+@app.patch("/v1/schedules/{schedule_id}", dependencies=[Depends(require_admin)])
+async def patch_schedule(schedule_id: str, req: SchedulePatchIn) -> dict:
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        ok = await repo.set_schedule_enabled(session, schedule_id, req.enabled)
+    if not ok:
+        raise HTTPException(status_code=404, detail="schedule not found")
+    return {"scheduleId": schedule_id, "enabled": req.enabled}
+
+
+@app.delete("/v1/schedules/{schedule_id}", dependencies=[Depends(require_admin)])
+async def delete_schedule_ep(schedule_id: str) -> dict:
+    from promptbreaker.store import repo
+    from promptbreaker.store.db import get_session_factory
+    async with get_session_factory()() as session:
+        ok = await repo.delete_schedule(session, schedule_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="schedule not found")
+    return {"deleted": schedule_id}

@@ -8,6 +8,7 @@
 import type {
   OverviewPayload, RunDetail, RecentRun, ProbeRegistryItem, ComplianceControl,
   TargetConfig, HardeningItem, LogEvent, SuiteInfo, CompareResult, AuditEvent,
+  ApiKey, CreatedApiKey, Schedule, ReviewItem, VerifyTargetResult, TriageState,
 } from "./types";
 import * as mock from "./mock";
 
@@ -31,6 +32,10 @@ export interface StartRunInput {
     reference: string;
     expires: string; // ISO
   };
+  /** Hardened system prompt injected into every probe (hardening wizard). */
+  systemContext?: string;
+  /** Parallel probe fan-out; 0 = server default. */
+  concurrency?: number;
 }
 
 export class ApiError extends Error {
@@ -165,4 +170,102 @@ export async function createSuite(input: {
 export async function deleteSuite(name: string): Promise<void> {
   if (USE_MOCK) throw new ApiError(501, "Suite delete requires live mode");
   await live<{ deleted: string }>(`/v1/suites/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------- v1.2 upgrades
+
+/**
+ * Resume a FAILED/CANCELED run: the engine re-plans only the probes that
+ * never executed and links the new run back to the original.
+ */
+export async function resumeRun(runId: string): Promise<{ runId: string }> {
+  if (USE_MOCK) throw new ApiError(501, "Resume requires live mode");
+  return live(`/v1/runs/${runId}/resume`, { method: "POST" });
+}
+
+/** Pre-stage target health: one harmless round-trip, never a probe. */
+export async function verifyTarget(targetId: string): Promise<VerifyTargetResult> {
+  if (USE_MOCK) throw new ApiError(501, "Health check requires live mode");
+  return live(`/v1/targets/${targetId}/verify`, { method: "POST" });
+}
+
+// ---- API keys (RBAC) ----
+
+export async function getKeys(): Promise<ApiKey[]> {
+  if (USE_MOCK) return [];
+  return live<{ keys: ApiKey[] }>("/v1/keys").then((d) => d.keys);
+}
+
+/** Issue a key — the plaintext in the result is shown once and never again. */
+export async function createKey(input: {
+  name: string;
+  role: "admin" | "viewer";
+}): Promise<CreatedApiKey> {
+  if (USE_MOCK) throw new ApiError(501, "Key issuance requires live mode");
+  return live("/v1/keys", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function revokeKey(keyId: string): Promise<void> {
+  if (USE_MOCK) throw new ApiError(501, "Key revocation requires live mode");
+  await live(`/v1/keys/${keyId}`, { method: "DELETE" });
+}
+
+// ---- triage + review queue ----
+
+export async function triageFinding(
+  findingId: string,
+  state: TriageState,
+  note = "",
+): Promise<void> {
+  if (USE_MOCK) throw new ApiError(501, "Triage requires live mode");
+  await live(`/v1/findings/${findingId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ triageState: state, triageNote: note }),
+  });
+}
+
+export async function getReview(): Promise<ReviewItem[]> {
+  if (USE_MOCK) return [];
+  return live<{ findings: ReviewItem[] }>("/v1/review").then((d) => d.findings);
+}
+
+// ---- scheduled scans ----
+
+export async function getSchedules(): Promise<Schedule[]> {
+  if (USE_MOCK) return [];
+  return live<{ schedules: Schedule[] }>("/v1/schedules").then((d) => d.schedules);
+}
+
+export interface ScheduleInput {
+  name: string;
+  targetId: string;
+  suite: string;
+  intervalMinutes: number;
+  attestation: {
+    targetPattern: string;
+    authorizedBy: string;
+    reference: string;
+    expires: string;
+  };
+}
+
+export async function createSchedule(input: ScheduleInput): Promise<Schedule> {
+  if (USE_MOCK) throw new ApiError(501, "Schedules require live mode");
+  return live("/v1/schedules", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function setScheduleEnabled(
+  scheduleId: string,
+  enabled: boolean,
+): Promise<void> {
+  if (USE_MOCK) throw new ApiError(501, "Schedules require live mode");
+  await live(`/v1/schedules/${scheduleId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<void> {
+  if (USE_MOCK) throw new ApiError(501, "Schedules require live mode");
+  await live(`/v1/schedules/${scheduleId}`, { method: "DELETE" });
 }

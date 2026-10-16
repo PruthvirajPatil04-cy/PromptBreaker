@@ -176,7 +176,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function hostnameOf(endpoint: string): string {
+export function hostnameOf(endpoint: string): string {
   try {
     return new URL(endpoint).hostname;
   } catch {
@@ -184,7 +184,7 @@ function hostnameOf(endpoint: string): string {
   }
 }
 
-function defaultExpiry(): string {
+export function defaultExpiry(): string {
   const d = new Date(Date.now() + 24 * 3600 * 1000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);

@@ -1,15 +1,26 @@
 "use client";
 // Prompt Hardening — remediation queue: finding → suggested system-prompt patch.
+// The wizard closes the loop: apply → re-scan with the hardened prompt →
+// auto-compare against the pre-hardening run.
 import { useEffect, useState } from "react";
-import { getHardening } from "@/lib/api";
+import { getHardening, getRuns } from "@/lib/api";
+import { HardeningWizard } from "@/components/HardeningWizard";
 import type { HardeningItem } from "@/lib/types";
 import { Card, CardHeader, SeverityPill } from "@/components/ui/primitives";
 
 export default function HardeningPage() {
   const [items, setItems] = useState<HardeningItem[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [wizard, setWizard] = useState<HardeningItem | null>(null);
+  const [previousRunId, setPreviousRunId] = useState<string | undefined>();
 
-  useEffect(() => { getHardening().then(setItems); }, []);
+  useEffect(() => {
+    getHardening().then(setItems).catch(() => {});
+    // baseline for the before/after delta: the newest finished run
+    getRuns()
+      .then((runs) => setPreviousRunId(runs.find((r) => r.status === "DONE")?.runId))
+      .catch(() => {});
+  }, []);
 
   const setStatus = (id: string, status: HardeningItem["status"]) =>
     setItems((prev) => prev.map((h) => (h.id === id ? { ...h, status } : h)));
@@ -63,6 +74,14 @@ export default function HardeningPage() {
             </div>
           </div>
           <div className="mt-3 flex gap-3">
+            {h.status === "open" && (
+              <button
+                onClick={() => setWizard(h)}
+                className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-medium hover:bg-accentHover"
+              >
+                ⚡ Hardening Wizard
+              </button>
+            )}
             <button
               onClick={() => copy(h)}
               className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-cardHover"
@@ -84,6 +103,20 @@ export default function HardeningPage() {
           </div>
         </Card>
       ))}
+
+      {items.length === 0 && (
+        <div className="py-10 text-center text-sm text-muted">
+          Remediation suggestions appear after a scan produces findings.
+        </div>
+      )}
+
+      {wizard && (
+        <HardeningWizard
+          item={wizard}
+          previousRunId={previousRunId}
+          onClose={() => setWizard(null)}
+        />
+      )}
     </div>
   );
 }

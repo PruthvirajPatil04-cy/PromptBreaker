@@ -194,6 +194,68 @@ objects and/or core ids like `"PI-002"`), upload, and it's selectable in
 Start Scan immediately. Delete it from the Suite Library. "Coverage is data,
 not code — your team ships new probes without touching the engine."
 
+## v1.2 features — stage demos (~2-3 min each)
+
+### Live engine feed + judge breakdown (the on-stage money shot)
+
+Start a scan of LeakyAssist (`core`) and stay on the run detail page — a new
+**Live Engine Feed** panel tails the engine over SSE: every `probe.sent` /
+`probe.judged` with verdicts as they land, while the score, budget bars, and
+findings list refresh live. The **Judge Breakdown** card shows which engine
+decided each verdict (prefilter vs LLM vs dual), plus judge-manipulation
+attempts and human-review flags. "Every verdict has an audit trail — and the
+judge can't be talked into a false PASS."
+
+### Hardening Wizard (finding → patched → re-scan → before/after)
+
+1. Sidebar → **Prompt Hardening** → pick an open remediation → **⚡ Hardening
+   Wizard**.
+2. Review the before/after system prompt → tune it if you want → configure
+   target + attestation → **Launch hardened re-scan**.
+3. The engine injects your prompt as the **system context** on every probe —
+   the re-scan measures the ACTUAL fix, not a hope.
+4. **Compare before / after** opens the delta page with the score change.
+"Security tooling that ends at a PDF is theater — this closes the loop."
+
+### Review queue + triage (governance)
+
+After the LeakyAssist scan, Sidebar → **Review Queue**: every open
+Critical/High finding with the verbatim evidence, judge rationale, and one
+click to **False positive / Accept risk / Mark patched**. The disposition
+persists to the store, disappears from the queue, and annotates the run.
+"That's the human-in-the-loop step your auditors will ask about."
+
+### Scheduled scans
+
+Sidebar → **Scheduled Scans** → create "nightly regression" (target + suite +
+interval + attestation). Due schedules fire automatically — the engine
+re-checks the attestation every time, so an expired authorization stops
+firing (visible in `lastError`) instead of scanning out of scope.
+
+### API key self-service
+
+Sidebar → **API Keys** → issue a `viewer` key for "your SOC's pipeline" —
+the plaintext shows **once** (`pbk_…`), revoke is instant. Viewer key reads
+fine, writes 403. "No shared secrets in Slack — scoped, revocable keys."
+
+### Resume a failed run
+
+Kill a scan mid-flight (or point one at a dead endpoint), open the run →
+**Resume**. The engine re-plans ONLY the probes that never executed, starts a
+linked run (`resumedFrom`), and you keep everything already judged. "A
+budget-capped or network-hiccuped scan doesn't cost you the whole run."
+
+### Multi-turn attack chains
+
+Start a scan with the **multiturn** suite — stateful chains
+(setup → escalate → extract) judged on the final turn. Real attackers don't
+ask once; neither do we.
+
+### Target health check
+
+Target Settings → **Test connection** — real round-trip, latency + reply,
+no probes fired. "Check the target is up before you go on stage."
+
 ## Deployment — hosted website + Windows app
 
 ### Hosted website (live now)

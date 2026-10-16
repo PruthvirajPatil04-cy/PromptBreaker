@@ -1,9 +1,10 @@
 "use client";
 // Overview — matches the reference layout: Overall Score + Category Scores,
 // Recent Test Runs table, Categories Overview cards.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getOverview, USE_MOCK } from "@/lib/api";
+import { streamRunEvents } from "@/lib/sse";
 import type { OverviewPayload } from "@/lib/types";
 import { StartScanModal } from "@/components/StartScanModal";
 import { GaugeChart } from "@/components/charts/GaugeChart";
@@ -17,6 +18,7 @@ import {
 import { riskBand, bandColor } from "@/lib/scoring";
 
 const MOCK_TREND = [52, 48, 55, 49, 44, 47, 46];
+const ACTIVE_STATUSES = new Set(["QUEUED", "PLAN", "EXECUTE", "JUDGE", "MUTATE", "REPORT"]);
 
 export default function OverviewPage() {
   const [data, setData] = useState<OverviewPayload | null>(null);
@@ -39,6 +41,30 @@ export default function OverviewPage() {
     getOverview().then((d) => { setData(d); setError(null); })
       .catch((e) => setError(String(e)));
   }, []);
+
+  // A2: live feed — tail the newest in-flight run over SSE so its progress
+  // row and verdict counts move as the engine works (poll stays as fallback).
+  const activeRunId =
+    data?.recentRuns.find((r) => ACTIVE_STATUSES.has(r.status))?.runId ?? "";
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (USE_MOCK || !activeRunId) return;
+    const stop = streamRunEvents(activeRunId, (e) => {
+      if (e.type === "run.finished" || e.type === "run.failed") {
+        load(); // run landed — refresh everything at once
+      } else if (e.type === "probe.judged" && !reloadTimer.current) {
+        reloadTimer.current = setTimeout(() => {
+          reloadTimer.current = null;
+          load();
+        }, 800);
+      }
+    });
+    return () => {
+      stop();
+      if (reloadTimer.current) { clearTimeout(reloadTimer.current); reloadTimer.current = null; }
+    };
+  }, [activeRunId, load]);
 
   useEffect(() => {
     load();
@@ -65,7 +91,16 @@ export default function OverviewPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Overview</h1>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          {activeRunId && !USE_MOCK && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded bg-fail/15 text-fail font-medium"
+              title="Engine events streaming live for the in-flight run"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-fail animate-pulse" />
+              LIVE
+            </span>
+          )}
           <button className="px-4 py-2 rounded-lg border border-border text-sm text-text hover:bg-cardHover">
             Generate Report
           </button>

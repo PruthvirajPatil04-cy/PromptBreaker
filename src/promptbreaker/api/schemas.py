@@ -107,6 +107,14 @@ class FindingOut(CamelModel):
     judge_manipulation: bool = False
     evidence_sha256: str = ""
     needs_human_review: bool = False
+    triage_state: str = "open"      # open | accepted_risk | false_positive | patched
+    triage_note: str = ""
+
+
+class ReviewItemOut(FindingOut):
+    """Review-queue row: finding + enough run context to make the call."""
+    target: str = ""
+    created_at: datetime | None = None
 
 
 class RunDetailOut(CamelModel):
@@ -126,6 +134,9 @@ class RunDetailOut(CamelModel):
     findings: list[FindingOut] = Field(default_factory=list)
     evidence_chain_valid: bool = True
     abort_reason: str = ""  # why a run failed (budget cap, restart, transport…)
+    judge_summary: dict[str, int] = Field(default_factory=dict)  # prefilter/llm/…
+    attempt_count: int = 0
+    resumed_from: str = ""  # set when this run resumed an earlier failed run
 
 
 # ------------------------------------------------------------------ registries
@@ -237,4 +248,80 @@ class AuditOut(CamelModel):
     method: str
     path: str
     status: int
+    detail: str = ""
+
+
+# ------------------------------------------------------------------ v1.2: keys
+
+class KeyIn(CamelModel):
+    name: str
+    role: str = "viewer"  # admin | viewer
+
+
+class KeyOut(CamelModel):
+    id: str
+    name: str
+    prefix: str       # display-only prefix; never the full key
+    role: str
+    created_at: datetime | None = None
+    created_by: str = ""
+    revoked: bool = False
+
+
+class KeyCreatedOut(KeyOut):
+    key: str = ""  # plaintext, returned exactly once at creation
+
+
+# --------------------------------------------------------------- v1.2: triage
+
+class TriageIn(CamelModel):
+    triage_state: str  # open | accepted_risk | false_positive | patched
+    triage_note: str = ""
+
+
+# ------------------------------------------------------------- v1.2: schedules
+
+class AttestationIn(CamelModel):
+    """Wire form of ScopeAttestation — camelCase (or snake, populate_by_name)."""
+    target_pattern: str
+    authorized_by: str
+    reference: str
+    expires: datetime
+
+
+class ScheduleIn(CamelModel):
+    name: str
+    target_id: str
+    suite: str = "core"
+    interval_minutes: int = 60
+    enabled: bool = True
+    attestation: AttestationIn
+
+
+class SchedulePatchIn(CamelModel):
+    enabled: bool
+
+
+class ScheduleOut(CamelModel):
+    id: str
+    name: str
+    target_id: str
+    suite: str
+    interval_minutes: int
+    enabled: bool
+    attested_by: str = ""
+    attestation_ref: str = ""
+    attestation_expires: datetime | None = None
+    last_run_at: datetime | None = None
+    last_run_id: str = ""
+    last_error: str = ""
+    next_run_at: datetime | None = None
+
+
+# ---------------------------------------------------------- v1.2: target health
+
+class VerifyTargetOut(CamelModel):
+    target_id: str
+    verified: bool
+    latency_ms: int = 0
     detail: str = ""

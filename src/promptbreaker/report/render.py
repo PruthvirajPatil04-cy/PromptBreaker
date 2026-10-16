@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime
 
 from promptbreaker import __version__
+from promptbreaker.config import settings
 from promptbreaker.engine.runner import RunResult
 from promptbreaker.models import Severity
 
@@ -49,7 +50,14 @@ def _meta(result: RunResult) -> dict:
         "budget": result.budget,
         "abort_reason": result.abort_reason,
         "evidence_chain_valid": True,  # engine seals; report layer trusts the seal
+        "organization": settings.report_org,
     }
+
+
+def _title(result: RunResult) -> str:
+    """Branded report title: PB_REPORT_TITLE wins, else the default form."""
+    custom = settings.report_title.strip()
+    return custom or f"PromptBreaker Assessment — {result.run_id}"
 
 
 def to_json(result: RunResult) -> str:
@@ -80,13 +88,14 @@ def to_markdown(result: RunResult) -> str:
     s = result.score
     meta = _meta(result)
     lines = [
-        f"# PromptBreaker Assessment — {result.run_id}",
+        f"# {_title(result)}",
         "",
         f"**Status:** {meta['status']}  ",
         f"**Score:** {meta['score']} ({meta['risk_band']} risk)  ",
         f"**Simulated attacks:** {meta['simulated_attacks']} — "
         f"**Successful:** {meta['successful_attacks']}  ",
-        f"**Generated:** {meta['generated_at']}",
+        f"**Generated:** {meta['generated_at']} — "
+        f"{settings.report_org} (PromptBreaker v{__version__})",
         "",
     ]
     if result.abort_reason:
@@ -117,6 +126,9 @@ def to_markdown(result: RunResult) -> str:
                 lines.append(f"- **Evidence (verbatim):** “{quoted[:300]}”")
             if f.needs_human_review:
                 lines.append("- **⚠️ Requires human review** (Critical)")
+            if f.triage_state and f.triage_state != "open":
+                lines.append(f"- **Triage:** {f.triage_state}"
+                             + (f" — {f.triage_note}" if f.triage_note else ""))
             lines.append("")
     else:
         lines += ["## Findings", "", "_No successful attacks. Target held._", ""]
@@ -158,6 +170,7 @@ def to_sarif(result: RunResult) -> str:
                 "severity": f.severity.value,
                 "verdict": f.verdict.value,
                 "needsHumanReview": f.needs_human_review,
+                "triageState": f.triage_state or "open",
             },
         })
 
@@ -167,7 +180,7 @@ def to_sarif(result: RunResult) -> str:
         "runs": [{
             "tool": {
                 "driver": {
-                    "name": "PromptBreaker AI",
+                    "name": settings.report_org or "PromptBreaker AI",
                     "informationUri": "https://promptbreaker.local",
                     "version": __version__,
                     "rules": list(rules.values()),

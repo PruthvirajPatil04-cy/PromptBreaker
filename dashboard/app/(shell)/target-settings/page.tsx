@@ -1,28 +1,45 @@
 "use client";
 // Target Settings — adapter config. Secrets shown as references, never plaintext.
+// "Test connection" performs a REAL pre-stage health check against the engine
+// (POST /v1/targets/{id}/verify): one harmless round-trip, never a probe —
+// this is the pre-demo gate that catches dead endpoints before going on stage.
 import { useEffect, useState } from "react";
-import { getTargets } from "@/lib/api";
-import type { TargetConfig } from "@/lib/types";
-import { Card, CardHeader, StatusPill } from "@/components/ui/primitives";
+import { getTargets, verifyTarget } from "@/lib/api";
+import type { TargetConfig, VerifyTargetResult } from "@/lib/types";
+import { Card, CardHeader } from "@/components/ui/primitives";
 
 export default function TargetSettingsPage() {
   const [targets, setTargets] = useState<TargetConfig[]>([]);
   const [testing, setTesting] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, VerifyTargetResult>>({});
 
-  useEffect(() => { getTargets().then(setTargets); }, []);
+  useEffect(() => { getTargets().then(setTargets).catch(() => {}); }, []);
 
-  const testConnection = (id: string) => {
+  const testConnection = async (id: string) => {
     setTesting(id);
-    setTimeout(() => setTesting(null), 900);
+    try {
+      const r = await verifyTarget(id);
+      setResults((prev) => ({ ...prev, [id]: r }));
+      setTargets((prev) => prev.map((t) => (t.id === id ? { ...t, verified: r.verified } : t)));
+    } catch (e) {
+      setResults((prev) => ({
+        ...prev,
+        [id]: { targetId: id, verified: false, latencyMs: 0, detail: String(e) },
+      }));
+    } finally {
+      setTesting(null);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Target Settings</h1>
-        <button className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover">
-          Add Target +
-        </button>
+        <div>
+          <h1 className="text-xl font-semibold">Target Settings</h1>
+          <div className="text-xs text-muted mt-1">
+            Test connection runs a real health check — one harmless round-trip, no probes fired.
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -54,15 +71,26 @@ export default function TargetSettingsPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex gap-3">
+            <div className="mt-4 flex gap-3 items-center">
               <button
                 onClick={() => testConnection(t.id)}
                 disabled={testing === t.id}
                 className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-cardHover disabled:opacity-50"
               >
-                {testing === t.id ? "Testing…" : "Test connection"}
+                {testing === t.id ? "Checking…" : "Test connection"}
               </button>
               <button className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-cardHover">Edit</button>
+              {results[t.id] && (
+                <span
+                  className="text-[11px] font-mono truncate max-w-[16rem]"
+                  title={results[t.id].detail}
+                  style={{ color: results[t.id].verified ? "#22C55E" : "#EF4444" }}
+                >
+                  {results[t.id].verified
+                    ? `✓ ${results[t.id].latencyMs}ms — ${results[t.id].detail}`
+                    : `✗ ${results[t.id].detail}`}
+                </span>
+              )}
             </div>
           </Card>
         ))}

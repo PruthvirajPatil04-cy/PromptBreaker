@@ -93,24 +93,45 @@ target response ──▶ deterministic prefilter ──decides──▶ verdict
   **672 bot × probe × mutator combinations** still produce the designed
   verdicts — judge determinism is regression-tested before every demo.
 
-## API surface (v1.1)
+## API surface (v1.2)
 
 | Endpoint | Purpose |
 |---|---|
 | `POST /v1/runs` · `GET /v1/runs/{id}` · `GET /v1/runs/{id}/events` | start / inspect / stream runs (SSE, `Last-Event-ID` replay) |
-| `POST /v1/runs/{id}/report` | report as `json` / `md` / **`sarif`** |
+| `POST /v1/runs/{id}/resume` | **resume a FAILED/CANCELED run** — re-plans only the probes that never executed, links back via `resumedFrom` |
+| `POST /v1/runs/{id}/report` | report as `json` / `md` / **`sarif`** (branded via `PB_REPORT_ORG` / `PB_REPORT_TITLE`) |
 | `GET /v1/compare?a=&b=` | **run-vs-run delta** — score, severity, fixed/new probes |
-| `GET/POST/DELETE /v1/suites` | suite picker + **custom suite upload** (your probes + core refs) |
+| `GET/POST/DELETE /v1/suites` | suite picker + **custom suite upload** (your probes + core refs; built-ins protected) |
+| `POST /v1/targets/{id}/verify` | **pre-stage health check** — one harmless round-trip, never a probe |
+| `GET/POST/DELETE /v1/keys` | **issue RBAC keys** — sha256 stored, plaintext returned once, revoke takes effect immediately |
+| `PATCH /v1/findings/{id}` | **triage** a finding: open / accepted_risk / false_positive / patched |
+| `GET /v1/review` | **review queue** — open Critical/High findings awaiting a human call |
+| `GET/POST/PATCH/DELETE /v1/schedules` | **scheduled scans** — each carries its own attestation; expiry stops firing |
 | `GET /v1/audit` | **audit log** of every authenticated API call |
-| `GET /metrics` | Prometheus: runs/findings/attempts counters, judge liveness |
+| `GET /metrics` | Prometheus: runs/findings/attempts counters, review queue depth, schedule states, judge liveness |
 | `GET /v1/overview` · `/v1/probes` · `/v1/compliance` · `/v1/hardening` | console data |
 
+**Engine v1.2:** parallel probe execution (default 4 concurrent slots,
+order-preserving), stateful **multi-turn attack chains** (`multiturn` suite —
+setup → escalate → extract, judged on the final turn), **adaptive mutation**
+(unexplored mutators run first, per-target stats persisted), incremental
+attempt persistence (a crash keeps every judged probe), and a hardened
+`systemContext` override so the **hardening wizard** can re-scan with the
+actual patched prompt injected.
+
 **RBAC:** API keys are sha256 hashes (`hash` = admin, `hash:viewer` =
-read-only). Viewers can read and download reports; only admins can start
-scans, manage targets, or change suites. Every call is audited.
+read-only). Keys issued from the dashboard (`/v1/keys`) are `pbk_…` — the
+plaintext is shown exactly once. Viewers can read and download reports; only
+admins can start scans, manage targets, keys, or schedules. Every call is
+audited.
 
 **Alerts:** set `PB_WEBHOOK_URL` (Slack/Discord-compatible) — runs that land
 High/Critical findings fire a webhook with score, band, and counts.
+
+**Judge calibration:** `src/promptbreaker/judge/golden.jsonl` locks 16 golden
+cases in CI (`tests/test_judge_calibration.py`); run
+`.venv/bin/python scripts/calibrate_judge.py` against the live judge model to
+measure the LLM half (ship threshold: ≥70%).
 
 ## Architecture
 

@@ -74,6 +74,27 @@ export interface Finding {
   judgeManipulation: boolean;
   evidenceSha256: string;
   needsHumanReview: boolean;
+  /** governance workflow: open | accepted_risk | false_positive | patched */
+  triageState: TriageState;
+  triageNote: string;
+}
+
+export type TriageState = "open" | "accepted_risk" | "false_positive" | "patched";
+
+/** Review queue row — finding + run context (GET /v1/review). */
+export interface ReviewItem extends Finding {
+  target: string;
+  createdAt: string | null;
+}
+
+/** Which engine decided each verdict in a run (GET /v1/runs/{id}). */
+export interface JudgeSummary {
+  prefilter: number;
+  llm: number;
+  none: number;
+  dual: number;
+  manipulation: number;
+  humanReview: number;
 }
 
 export interface RunDetail {
@@ -93,6 +114,9 @@ export interface RunDetail {
   budget: { probes: { used: number; cap: number }; tokens: { used: number; cap: number }; costUsd: { used: number; cap: number } };
   findings: Finding[];
   evidenceChainValid: boolean;
+  judgeSummary: JudgeSummary;   // per-run judge breakdown panel
+  attemptCount: number;
+  resumedFrom: string;          // set when this run resumed an earlier failed run
 }
 
 export interface ProbeRegistryItem {
@@ -190,4 +214,44 @@ export interface LogEvent {
   level: "info" | "warn" | "error";
   probeId?: string;
   detail?: string;
+}
+
+/** Dashboard-issued API key (GET /v1/keys). Plaintext only ever returned once. */
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;      // display prefix — never the full key
+  role: "admin" | "viewer";
+  createdAt: string | null;
+  createdBy: string;
+  revoked: boolean;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  key: string; // plaintext, shown exactly once at creation
+}
+
+/** Scheduled scan (GET /v1/schedules). */
+export interface Schedule {
+  id: string;
+  name: string;
+  targetId: string;
+  suite: string;
+  intervalMinutes: number;
+  enabled: boolean;
+  attestedBy: string;
+  attestationRef: string;
+  attestationExpires: string | null;
+  lastRunAt: string | null;
+  lastRunId: string;
+  lastError: string;
+  nextRunAt: string | null;
+}
+
+/** Pre-stage health check result (POST /v1/targets/{id}/verify). */
+export interface VerifyTargetResult {
+  targetId: string;
+  verified: boolean;
+  latencyMs: number;
+  detail: string;
 }

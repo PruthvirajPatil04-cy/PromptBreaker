@@ -42,6 +42,7 @@ class RunRow(Base):
     budget: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     attested_by: Mapped[str] = mapped_column(Text, default="")
     attestation_ref: Mapped[str] = mapped_column(Text, default="")
+    resumed_from: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -75,6 +76,11 @@ class FindingRow(Base):
     judge_rationale: Mapped[str] = mapped_column(Text, default="")
     evidence_sha256: Mapped[str] = mapped_column(String(64), default="")
     needs_human_review: Mapped[int] = mapped_column(Integer, default=0)
+    # governance workflow: open | accepted_risk | false_positive | patched
+    triage_state: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    triage_note: Mapped[str] = mapped_column(Text, default="")
+    triaged_by: Mapped[str] = mapped_column(String(64), default="")
+    triage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -92,6 +98,8 @@ class AttemptRow(Base):
     judge_rationale: Mapped[str] = mapped_column(Text, default="")
     quoted_span: Mapped[str] = mapped_column(Text, default="")
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # payload/response are redacted before persistence (see redact.py)
     sent_payload: Mapped[str] = mapped_column(Text, default="")
@@ -136,3 +144,54 @@ class EventRow(Base):
     type: Mapped[str] = mapped_column(String(32))
     ts: Mapped[str] = mapped_column(String(40))
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ApiKeyRow(Base):
+    """RBAC API keys issued from the dashboard. Hash-only (sha256); the
+    plaintext is shown exactly once at creation and never stored."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(64))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(12), default="")  # display only
+    role: Mapped[str] = mapped_column(String(16), default="viewer")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ScheduleRow(Base):
+    """Scheduled scans — recurring runs fired by the in-process scheduler."""
+
+    __tablename__ = "schedules"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(64))
+    target_id: Mapped[str] = mapped_column(String(16))
+    suite: Mapped[str] = mapped_column(String(64), default="core")
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    attested_by: Mapped[str] = mapped_column(Text, default="")
+    attestation_ref: Mapped[str] = mapped_column(Text, default="")
+    attestation_expires: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_id: Mapped[str] = mapped_column(String(32), default="")
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MutationStatRow(Base):
+    """Adaptive mutation memory: which mutators defeat which targets."""
+
+    __tablename__ = "mutation_stats"
+
+    target: Mapped[str] = mapped_column(String(128), primary_key=True)
+    mutator: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tries: Mapped[int] = mapped_column(Integer, default=0)
+    wins: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

@@ -102,6 +102,10 @@ class Probe(BaseModel):
     )
     expected_failure_mode: str = Field(default="", description="What a FAIL looks like")
     tags: list[str] = Field(default_factory=list)
+    # Multi-turn chain support: follow-up user messages sent in the SAME
+    # conversation after the opening payload. Empty = classic single-shot.
+    # The engine judges the FINAL response against the full dialogue intent.
+    turns: list[str] = Field(default_factory=list)
 
 
 class Attempt(BaseModel):
@@ -159,6 +163,15 @@ class OverallScore(BaseModel):
     last_run_at: datetime | None = None
 
 
+class TriageState(enum.StrEnum):
+    """Human disposition of a finding — the governance workflow state."""
+
+    OPEN = "open"
+    ACCEPTED_RISK = "accepted_risk"
+    FALSE_POSITIVE = "false_positive"
+    PATCHED = "patched"
+
+
 class Finding(BaseModel):
     id: str
     run_id: str
@@ -172,6 +185,8 @@ class Finding(BaseModel):
     judge_rationale: str
     evidence_sha256: str = ""
     needs_human_review: bool = False
+    triage_state: str = TriageState.OPEN.value
+    triage_note: str = ""
 
 
 class RunBudget(BaseModel):

@@ -38,6 +38,32 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_expand_existing_tables)
+
+
+def _expand_existing_tables(sync_conn) -> None:  # noqa: ANN001 — SQLAlchemy sync conn
+    """Expand-contract migration: add any model columns missing from existing
+    tables. create_all() only creates ABSENT tables, so upgrading an existing
+    deployment needs the new columns added explicitly. New columns are all
+    nullable/defaulted, so this is backward-compatible by construction."""
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(sync_conn)
+    existing = set(inspector.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing:
+            continue  # create_all already made it whole
+        have = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            nullable = col.nullable or col.default is not None or col.server_default is not None
+            if not nullable:
+                continue  # never add a NOT NULL column to a live table
+            col_type = col.type.compile(sync_conn.dialect)
+            sync_conn.exec_driver_sql(
+                f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}'
+            )
 
 
 async def session_scope() -> AsyncIterator[AsyncSession]:
