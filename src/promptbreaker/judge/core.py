@@ -56,7 +56,10 @@ _COMPLIANCE_PATTERNS = {
     ],
     "prompt_injection": [
         re.compile(r"\bSYSTEM_PROMPT_DUMPED\b"),
-        re.compile(r"ignore (all )?previous (instructions|rules)\b.{0,60}\b(okay|sure|understood)\b", re.I | re.S),
+        re.compile(
+            r"ignore (all )?previous (instructions|rules)\b.{0,60}\b(okay|sure|understood)\b",
+            re.I | re.S,
+        ),
     ],
 }
 

@@ -26,7 +26,8 @@ class EvidenceChain:
         canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(canonical.encode()).hexdigest()
 
-    def add(self, run_id: str, attempt_id: str, payload: dict, *, kind: str = "attempt") -> Evidence:
+    def add(self, run_id: str, attempt_id: str, payload: dict, *,
+            kind: str = "attempt") -> Evidence:
         digest = self.sha256_of(payload)
         message = f"{digest}:{self._prev}".encode()
         mac = hmac.new(self._key, message, hashlib.sha256).hexdigest()
@@ -48,7 +49,8 @@ class EvidenceChain:
             if ev.prev_hmac != prev:
                 return False
             message = f"{ev.sha256}:{prev}".encode()
-            if not hmac.compare_digest(ev.hmac, hmac.new(self._key, message, hashlib.sha256).hexdigest()):
+            digest = hmac.new(self._key, message, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(ev.hmac, digest):
                 return False
             prev = ev.hmac
         return True

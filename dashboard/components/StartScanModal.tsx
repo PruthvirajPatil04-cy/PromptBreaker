@@ -12,7 +12,7 @@ export function StartScanModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [targets, setTargets] = useState<TargetConfig[]>([]);
   const [suites, setSuites] = useState<SuiteInfo[]>([
-    { name: "core", probes: 12, description: "" },
+    { name: "core", probes: 12, description: "", builtin: true },
   ]);
   const [targetId, setTargetId] = useState("");
   const [suite, setSuite] = useState("core");

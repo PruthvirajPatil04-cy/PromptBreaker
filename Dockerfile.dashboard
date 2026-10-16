@@ -1,0 +1,24 @@
+# PromptBreaker dashboard — Next.js, single-origin proxy in front of the API.
+FROM node:20-slim AS build
+WORKDIR /app
+COPY dashboard/package*.json ./
+RUN npm ci
+COPY dashboard .
+# Same-origin proxy: no public API base. PB_API_ORIGIN is the engine container.
+ARG PB_API_ORIGIN=http://api:8000
+ENV NEXT_PUBLIC_PB_USE_MOCK=false \
+    NEXT_PUBLIC_PB_API_BASE= \
+    NEXT_PUBLIC_PB_API_KEY=dev-key \
+    PB_API_ORIGIN=${PB_API_ORIGIN}
+RUN npm run build
+
+FROM node:20-slim
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./
+COPY --from=build /app/public ./public
+COPY --from=build /app/next.config.js ./
+EXPOSE 3000
+CMD ["npm", "start"]

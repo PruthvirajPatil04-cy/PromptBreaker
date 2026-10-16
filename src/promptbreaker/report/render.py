@@ -8,10 +8,11 @@ directly to GitHub Code Scanning.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from promptbreaker import __version__
 from promptbreaker.engine.runner import RunResult
-from promptbreaker.models import Severity, Verdict
+from promptbreaker.models import Severity
 
 _SARIF_LEVEL = {
     Severity.CRITICAL: "error",
@@ -39,7 +40,7 @@ def _meta(result: RunResult) -> dict:
     s = result.score
     return {
         "run_id": result.run_id,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "status": result.status.value,
         "score": s.score if s else None,
         "risk_band": s.band.value if s else None,
@@ -95,7 +96,10 @@ def to_markdown(result: RunResult) -> str:
         lines += ["## Category scores", "", "| Category | Score | Pass | Fail | Partial | Error |",
                   "|---|---|---|---|---|---|"]
         for c in s.categories:
-            lines.append(f"| {c.category} | {c.score} | {c.passed} | {c.failed} | {c.partial} | {c.errors} |")
+            lines.append(
+                f"| {c.category} | {c.score} | {c.passed} | {c.failed} "
+                f"| {c.partial} | {c.errors} |"
+            )
         lines.append("")
 
     if result.findings:
@@ -138,7 +142,9 @@ def to_sarif(result: RunResult) -> str:
                 "id": rule_id,
                 "name": f.category.replace("_", " ").title(),
                 "shortDescription": {"text": f"LLM {f.category.replace('_', ' ')} weakness"},
-                "properties": {"tags": ["ai-security", "llm", _CATEGORY_OWASP.get(f.category, "LLM0x")]},
+                "properties": {
+                    "tags": ["ai-security", "llm", _CATEGORY_OWASP.get(f.category, "LLM0x")],
+                },
             }
         results.append({
             "ruleId": rule_id,
@@ -163,7 +169,7 @@ def to_sarif(result: RunResult) -> str:
                 "driver": {
                     "name": "PromptBreaker AI",
                     "informationUri": "https://promptbreaker.local",
-                    "version": "1.0.0",
+                    "version": __version__,
                     "rules": list(rules.values()),
                 },
             },

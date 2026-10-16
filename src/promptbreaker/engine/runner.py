@@ -15,15 +15,28 @@ from typing import Any
 
 from promptbreaker.adapters.base import TargetAdapter
 from promptbreaker.config import settings
-from promptbreaker.errors import AdapterError, BudgetExceededError, JudgeError, ScopeError
 from promptbreaker.engine.budget import BudgetTracker
 from promptbreaker.engine.events import EventLog, event_log
 from promptbreaker.engine.evidence import EvidenceChain
 from promptbreaker.engine.mutators import mutate
-from promptbreaker.errors import SsrfBlockedError
+from promptbreaker.errors import (
+    AdapterError,
+    BudgetExceededError,
+    JudgeError,
+    ScopeError,
+    SsrfBlockedError,
+)
 from promptbreaker.judge.core import LlmJudge, judge_response
 from promptbreaker.models import (
-    Attempt, Evidence, Finding, Probe, RunBudget, RunStatus, ScopeAttestation, Severity, Verdict,
+    Attempt,
+    Evidence,
+    Finding,
+    Probe,
+    RunBudget,
+    RunStatus,
+    ScopeAttestation,
+    Severity,
+    Verdict,
 )
 from promptbreaker.probes.registry import load_suite
 from promptbreaker.scoring import overall_score
@@ -169,7 +182,9 @@ class Engine:
         except (AdapterError, SsrfBlockedError) as exc:
             attempt.verdict = Verdict.ERROR
             attempt.error = str(exc)[:500]
-            self.events.append(self.run_id, "probe.error", {"probe_id": probe.id, "error": attempt.error})
+            self.events.append(
+                self.run_id, "probe.error", {"probe_id": probe.id, "error": attempt.error}
+            )
             result.attempts.append(attempt)
             return
 
@@ -216,7 +231,10 @@ class Engine:
                 needs_human_review=sev == Severity.CRITICAL,
             ))
         # worst-first
-        order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.INFO: 0}
+        order = {
+            Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2,
+            Severity.LOW: 1, Severity.INFO: 0,
+        }
         findings.sort(key=lambda f: order.get(f.severity, 0), reverse=True)
         return findings
 

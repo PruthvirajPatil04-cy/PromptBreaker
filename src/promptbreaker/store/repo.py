@@ -6,7 +6,8 @@ security/redact.py) — captured transcripts routinely contain real keys.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,9 @@ from promptbreaker.engine.runner import RunResult
 from promptbreaker.models import Attempt, Evidence, Finding, Severity, Verdict
 from promptbreaker.security.redact import redact
 from promptbreaker.store.models import AttemptRow, EvidenceRow, FindingRow, RunRow
+
+if TYPE_CHECKING:
+    from promptbreaker.store.models import AuditRow, EventRow
 
 
 async def save_result(
@@ -42,7 +46,7 @@ async def save_result(
     run.successful = s.successful if s else 0
     run.abort_reason = result.abort_reason or None
     run.budget = result.budget
-    run.finished_at = datetime.now(timezone.utc)
+    run.finished_at = datetime.now(UTC)
 
     for a in result.attempts:
         session.add(AttemptRow(
@@ -116,7 +120,7 @@ async def run_verdict_counts(
     session: AsyncSession, run_ids: list[str],
 ) -> dict[str, dict[str, int]]:
     """Per-run PASS/FAIL/PARTIAL/ERROR counts + distinct probe ids, one query."""
-    from sqlalchemy import distinct, func
+    from sqlalchemy import func
 
     out: dict[str, dict[str, int]] = {
         rid: {"passed": 0, "failed": 0, "partial": 0, "errors": 0, "attempts": 0}
@@ -141,7 +145,6 @@ async def run_probe_ids(
     session: AsyncSession, run_ids: list[str],
 ) -> dict[str, list[str]]:
     """Distinct probe ids per run, in first-seen order (mutations stripped)."""
-    from sqlalchemy import distinct, func
 
     out: dict[str, list[str]] = {rid: [] for rid in run_ids}
     if not run_ids:
@@ -179,7 +182,7 @@ async def save_events(session: AsyncSession, run_id: str, events: list) -> None:
     await session.commit()
 
 
-async def get_events(session: AsyncSession, run_id: str) -> list["EventRow"]:
+async def get_events(session: AsyncSession, run_id: str) -> list[EventRow]:
     from promptbreaker.store.models import EventRow
     rows = await session.execute(
         select(EventRow).where(EventRow.run_id == run_id).order_by(EventRow.seq)
@@ -189,7 +192,7 @@ async def get_events(session: AsyncSession, run_id: str) -> list["EventRow"]:
 
 # ---------------------------------------------------------------- targets
 
-async def list_targets(session: AsyncSession) -> list["TargetRow"]:
+async def list_targets(session: AsyncSession) -> list[TargetRow]:
     from sqlalchemy import select as _select
     rows = await session.execute(_select(TargetRow).order_by(TargetRow.created_at))
     return list(rows.scalars())
@@ -198,9 +201,10 @@ async def list_targets(session: AsyncSession) -> list["TargetRow"]:
 async def add_target(session: AsyncSession, *, name: str, adapter: str, endpoint: str,
                      secret_ref: str = "", allow_private: bool = False,
                      max_redirects: int = 3, sandbox: bool = False,
-                     verified: bool = False) -> "TargetRow":
-    from promptbreaker.store.models import TargetRow
+                     verified: bool = False) -> TargetRow:
     import uuid as _uuid
+
+    from promptbreaker.store.models import TargetRow
     row = TargetRow(
         id=f"t-{_uuid.uuid4().hex[:8]}", name=name, adapter=adapter,
         endpoint=endpoint, secret_ref=secret_ref, allow_private=allow_private,
@@ -261,3 +265,45 @@ def evidence_from_row(row: EvidenceRow) -> Evidence:
         id=row.id, run_id=row.run_id, attempt_id=row.attempt_id, kind=row.kind,
         sha256=row.sha256, prev_hmac=row.prev_hmac, hmac=row.hmac,
     )
+
+
+# ---------------------------------------------------------------- audit + metrics
+
+async def add_audit(session: AsyncSession, *, role: str, method: str, path: str,
+                    status: int, detail: str = "") -> None:
+    from promptbreaker.store.models import AuditRow
+    session.add(AuditRow(
+        role=role[:16], method=method[:8], path=path[:500],
+        status=status, detail=detail[:500],
+    ))
+    await session.commit()
+
+
+async def list_audit(session: AsyncSession, limit: int = 200) -> list[AuditRow]:
+    from sqlalchemy import select as _select
+
+    from promptbreaker.store.models import AuditRow
+    rows = await session.execute(
+        _select(AuditRow).order_by(AuditRow.ts.desc()).limit(limit)
+    )
+    return list(rows.scalars())
+
+
+async def metrics_counts(session: AsyncSession) -> dict[str, dict[str, int]]:
+    """Aggregate counters for /metrics: runs by status, findings by severity,
+    attempts by verdict. Single GROUP BY each — cheap at any row count."""
+    from sqlalchemy import func
+
+    out: dict[str, dict[str, int]] = {"runs": {}, "findings": {}, "attempts": {}}
+
+    async def group(col, key_out: dict) -> None:
+        rows = await session.execute(
+            select(col, func.count()).group_by(col)
+        )
+        for value, count in rows:
+            key_out[str(value)] = int(count)
+
+    await group(RunRow.status, out["runs"])
+    await group(FindingRow.severity, out["findings"])
+    await group(AttemptRow.verdict, out["attempts"])
+    return out

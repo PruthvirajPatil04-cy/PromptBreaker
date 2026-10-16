@@ -31,12 +31,17 @@ class Settings(BaseSettings):
     evidence_ttl_days: int = 90
 
     # API
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # noqa: S104 — engine binds wide; auth + dashboard gate sit in front
     api_port: int = 8000
     cors_origins: str = "http://localhost:3000"
 
     # Auth — API keys are hashed (sha256), never stored plaintext.
-    api_keys: str = ""  # comma-separated sha256 hex digests
+    # Entries are "sha256hex" (admin, default) or "sha256hex:viewer" (read-only).
+    api_keys: str = ""  # comma-separated sha256 hex digests, optional ":role"
+
+    # Alerts — Slack/Discord-compatible webhook fired when a run finishes with
+    # High or Critical findings. Empty disables alerts.
+    webhook_url: str = ""
 
     # SSRF guard — private ranges blocked unless explicitly allowed per target.
     allow_private_targets: bool = False

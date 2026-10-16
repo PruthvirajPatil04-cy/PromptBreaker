@@ -113,7 +113,7 @@ export const complianceControls: ComplianceControl[] = [
 ];
 
 export const suites: SuiteInfo[] = [
-  { name: "core", probes: 12, description: "Full 12-probe suite across all nine OWASP LLM families" },
+  { name: "core", probes: 12, description: "Full 12-probe suite across all nine OWASP LLM families", builtin: true },
 ];
 
 export const targets: TargetConfig[] = [

@@ -20,10 +20,12 @@ containers required.
 |------|------|---------|
 | `promptbreaker-api` | 8000 | FastAPI control plane + engine runs |
 | `promptbreaker-dashboard` | 3000 | Next.js dashboard (live mode) |
+| `ollama` | 11434 | Local LLM judge (qwen2.5:7b) — consulted only when the rules abstain |
+| `demo/chatbots.py` | 18081–18088 | The 8-bot gauntlet (each with its own key) |
 | `demo/fake_target.py` | 18080 | Local OpenAI-shaped target being assessed |
 
 ```bash
-systemctl status promptbreaker-api promptbreaker-dashboard
+systemctl status promptbreaker-api promptbreaker-dashboard promptbreaker-chatbots ollama
 ```
 
 ## First-time seed (populates real history)
@@ -61,10 +63,10 @@ probes plus mutations, hybrid judging, evidence chaining, scoring. Expect
 8. **Prompt Hardening** — one before/after card per category that produced
    findings in the latest run.
 
-## The 7-chatbot gauntlet (main event)
+## The 8-chatbot gauntlet (main event)
 
-Seven deliberately vulnerable chatbots run as one service
-(`promptbreaker-chatbots.service`, ports 18081–18087). Each has its **own API
+Eight deliberately vulnerable chatbots run as one service
+(`promptbreaker-chatbots.service`, ports 18081–18088). Each has its **own API
 key**, a live chat page, and one scripted weakness profile — so every scan
 lands on a different score and band. All verdicts come from the engine's real
 judge; nothing is faked.
@@ -78,11 +80,27 @@ judge; nothing is faked.
 | 5 | AutoAgent | localhost:18085 | `http://127.0.0.1:18085/v1` | `autoagent-demo-2026` | executes destructive commands + unsafe tool calls | **44.44 High** (35) |
 | 6 | InfiniteWriter | localhost:18086 | `http://127.0.0.1:18086/v1` | `infinite-writer-demo-2026` | echoes unbounded, leaks runtime keys, ships XSS | **33.33 High** (40) |
 | 7 | CreativeAI | localhost:18087 | `http://127.0.0.1:18087/v1` | `creative-ai-demo-2026` | confirms every hallucination, leaks its key in every reply | **0.0 Critical** (60) |
+| 8 | EvasiveBot | localhost:18088 | `http://127.0.0.1:18088/v1` | `evasive-demo-2026` | never refuses, never complies — evades every signature | **LLM judge decides** (see below) |
 
-All seven are **pre-registered as targets** in Target Settings (allowPrivate
-on) and already have one completed run each, so the dashboard shows the full
-ladder the moment you walk in. From Windows use `localhost:1808X` for the
-chat pages (or `172.28.99.44:1808X`).
+All eight are **pre-registered as targets** in Target Settings (allowPrivate
+on). From Windows use `localhost:1808X` for the chat pages (or
+`172.28.99.44:1808X`).
+
+### The judge showcase (EvasiveBot, ~60 sec, the "how do you know?" answer)
+
+Run a scan against EvasiveBot (`quick` suite, ~20 attempts):
+
+1. Every reply dodges — no refusal language, no compliance content, no secret
+   shapes — so the **deterministic prefilter abstains** on every probe.
+2. The engine escalates each one to the **local LLM judge (Ollama,
+   qwen2.5:7b, fully offline)**. Watch the findings fill with
+   `judge engine: llm` instead of `prefilter`.
+3. Open a finding: the LLM's verdict still carries a **verbatim quoted span**
+   from the target's response — if the model quotes something that isn't
+   there, the verdict is rejected. "The LLM never gets the last word alone."
+4. Talking point: "Rules first because they're cheap and auditable; the LLM
+   only where the rules can't decide; and the quote rule means the LLM can't
+   hallucinate a finding into existence."
 
 ### Suite options (Start Scan dropdown)
 
@@ -127,8 +145,54 @@ so payloads live in exactly one place.
   all four risk bands: "same 12 probes, same judge, different bot quality."
 - **Mutation-proof detection.** The engine obfuscates every probe (base64,
   zero-width, leetspeak, NFKC, decoys, splits) — the bots still fail
-  correctly. `python demo/chatbots.py --selftest` proves all 588
+  correctly. `python demo/chatbots.py --selftest` proves all 672
   bot×probe×mutator combinations against the engine's real prefilter.
+
+## v1.1 features — quick stage demos (~2 min each)
+
+### Compare Runs (the "prove the patch worked" page)
+
+1. Scan YesMan with `jailbreak` (before) → note the score.
+2. Talk about hardening for 30 seconds (or just re-scan SecureBot as "after").
+3. Sidebar → **Compare Runs** → pick the two runs → **Compare**.
+4. You get: score delta (colored), per-severity finding delta, **fixed in B**
+   vs **new in B** probe lists. This is the page that turns a scan into a
+   before/after security argument.
+
+### SARIF export → GitHub code scanning
+
+Run Detail → format dropdown → **SARIF** → Download. The file validates
+against SARIF 2.1.0 and drops straight into GitHub Advanced Security /
+DefectDojo / any SARIF viewer. "Our reports feed your existing pipeline —
+they don't replace it."
+
+### RBAC + audit log
+
+The dashboard logs in with an **admin** key. Ask for a viewer key
+(`.viewer_key` on the server) and call the API with it:
+viewer gets 200 on reads, **403 on POST /v1/runs**. Sidebar → **Audit Log**
+shows every API call: role, method, path, status — live-refreshing.
+"The demo console is one role; your SOC gets read-only keys, and every call
+they make is logged."
+
+### Prometheus metrics
+
+`curl localhost:8000/metrics` (or `/metrics` through the dashboard origin) —
+`pb_runs_total{status=…}`, `pb_findings_total{severity=…}`,
+`pb_judge_llm_up`. "It plugs into the monitoring you already run."
+
+### Webhook alerting (if Slack/Discord webhook configured)
+
+Set `PB_WEBHOOK_URL` in `.env`, run CreativeAI (0.0 Critical) — the alert
+lands with score, band, and finding counts. Empty in the live demo, so say:
+"one env var between a Critical finding and your incident channel."
+
+### Custom suite upload
+
+Probe Settings → **Import Custom Suite** — paste a JSON array (your own probe
+objects and/or core ids like `"PI-002"`), upload, and it's selectable in
+Start Scan immediately. Delete it from the Suite Library. "Coverage is data,
+not code — your team ships new probes without touching the engine."
 
 ## Deployment — hosted website + Windows app
 
@@ -231,5 +295,12 @@ cd ~/promptbreaker && ./demo/seed.sh 3
 - **Fail loudly**: live mode never falls back to mock data (a fabricated
   number in a security demo is worse than an error banner).
 - **Contract-locked frontend**: API responses are asserted field-for-field
-  against the TypeScript types in `tests/test_api_contract.py` — 40 tests
-  guard the whole surface.
+  against the TypeScript types in `tests/test_api_contract.py` — 46 tests
+  guard the whole surface, including compare/audit/suites/RBAC.
+- **CI gate**: `promptbreaker scan --config promptbreaker.yml` exits 0/1/2 —
+  clean / findings-at-threshold / engine error — and uploads SARIF to code
+  scanning. The GitHub Action template is one file away.
+- **Two-stage judge**: deterministic prefilter decides the scripted bots;
+  the local LLM judge (Ollama, offline) takes over when the rules abstain —
+  EvasiveBot is the live proof, and the quoted-span rule means the LLM can
+  never invent evidence.

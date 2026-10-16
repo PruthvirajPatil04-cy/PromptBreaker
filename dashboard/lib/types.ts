@@ -118,6 +118,45 @@ export interface SuiteInfo {
   name: string;
   probes: number;
   description: string;
+  builtin: boolean; // shipped suite — protected from overwrite/delete
+}
+
+/** Run-vs-run comparison (GET /v1/compare?a=&b=) — delta view for the Compare page. */
+export interface CompareSide {
+  runId: string;
+  name: string;
+  target: string;
+  suite: string;
+  status: RunStatus;
+  score: number;
+  band: string;
+  executedOn: string | null;
+  simulated: number;
+  successful: number;
+  findingCount: number;
+  bySeverity: Record<string, number>;
+  byCategory: Record<string, number>;
+  failingProbes: Record<string, string>; // probe id → worst severity
+}
+
+export interface CompareResult {
+  a: CompareSide;
+  b: CompareSide;
+  deltaScore: number;
+  severityDelta: Record<string, number>; // b minus a, per severity
+  fixedInB: string[]; // failing in A, clean in B
+  newInB: string[];   // failing in B, clean in A
+}
+
+/** Audit log entry (GET /v1/audit) — one row per authenticated API request. */
+export interface AuditEvent {
+  id: string;
+  ts: string;
+  role: string;
+  method: string;
+  path: string;
+  status: number;
+  detail: string;
 }
 
 export interface TargetConfig {

@@ -1,0 +1,25 @@
+# PromptBreaker scan spec — commit this next to the code it protects.
+#
+#   promptbreaker scan --config promptbreaker.yml
+#
+# CLI flags always override this file, and secrets never live here:
+# api_key_env names an environment variable (e.g. a CI secret).
+
+name: payment-assistant pre-release gate
+target: http://127.0.0.1:18081/v1   # your OpenAI-compatible endpoint
+adapter: openai
+model: gpt-4o-mini
+api_key_env: TARGET_API_KEY          # read from the environment, never stored
+suite: core                          # core | quick | jailbreak | privacy | agency | safety | custom
+allow_private: false                 # true only for lab targets you own
+seed: 7                              # deterministic mutations — reruns are reproducible
+
+fail_on: High                        # exit 1 if any finding >= this severity
+format: sarif                        # json | md | sarif (SARIF uploads to GitHub code scanning)
+output: promptbreaker.sarif
+
+max_probes: 60
+
+# Scope attestation (required — PromptBreaker only scans authorized targets)
+attested_by: "Security Team <sec@example.com>"
+reference: "ENG-2026-0142"

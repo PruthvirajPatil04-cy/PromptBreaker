@@ -1,0 +1,36 @@
+# PromptBreaker CI gate — TEMPLATE.
+#
+# Copy this file into your own project's .github/workflows/ directory, add
+# TARGET_API_KEY to your repository secrets, commit a promptbreaker.yml, and
+# every push/PR gets a severity gate with deterministic exit codes:
+#   0 = clean, 1 = findings at/above fail_on, 2 = engine error.
+#
+# It only runs when you trigger it manually here (workflow_dispatch) so the
+# template in this repo never fires on its own.
+
+name: promptbreaker-gate
+on:
+  workflow_dispatch:
+  # Uncomment once copied into a project with a real target:
+  # pull_request:
+  # push:
+
+jobs:
+  pb-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "promptbreaker @ git+https://github.com/PruthvirajPatil04-cy/PromptBreaker.git"
+      - name: Run assessment (fails the build at/above threshold)
+        env:
+          TARGET_API_KEY: ${{ secrets.TARGET_API_KEY }}
+        run: promptbreaker scan --config promptbreaker.yml
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: promptbreaker.sarif
+        continue-on-error: true

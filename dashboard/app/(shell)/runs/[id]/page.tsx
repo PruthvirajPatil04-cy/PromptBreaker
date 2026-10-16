@@ -3,6 +3,7 @@
 // Live mode polls while the run is in flight, so the demo shows scores and
 // findings appearing as the engine works.
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { getRunDetail, liveRunReport } from "@/lib/api";
 import type { RunDetail as RunDetailT } from "@/lib/types";
 import { Card, CardHeader, SeverityPill, StatusPill } from "@/components/ui/primitives";
@@ -10,12 +11,14 @@ import { DonutRing } from "@/components/charts/DonutRing";
 import { bandColor } from "@/lib/scoring";
 
 const ACTIVE = new Set(["QUEUED", "PLAN", "EXECUTE", "JUDGE", "MUTATE", "REPORT"]);
+type ReportFmt = "md" | "json" | "sarif";
 
 export default function RunDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const [run, setRun] = useState<RunDetailT | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [fmt, setFmt] = useState<ReportFmt>("md");
 
   const load = useCallback(() => {
     getRunDetail(id).then((r) => { setRun(r); setError(null); })
@@ -48,14 +51,30 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           </h1>
           <div className="text-xs text-muted mt-1 font-mono">{run.runId} · {run.target}</div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           <button className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover">Re-run</button>
+          <Link
+            href={`/compare?a=${run.runId}`}
+            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-cardHover"
+          >
+            Compare…
+          </Link>
+          <select
+            aria-label="Report format"
+            value={fmt}
+            onChange={(e) => setFmt(e.target.value as ReportFmt)}
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="md">Markdown</option>
+            <option value="json">JSON</option>
+            <option value="sarif">SARIF</option>
+          </select>
           <button
             disabled={running}
-            onClick={() => liveRunReport(run.runId)}
+            onClick={() => liveRunReport(run.runId, fmt)}
             className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accentHover disabled:opacity-40"
           >
-            {running ? "Running…" : "Download Report"}
+            {running ? "Running…" : "Download"}
           </button>
         </div>
       </div>

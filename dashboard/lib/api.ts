@@ -6,8 +6,8 @@
 // Failures throw — pages render an error state instead of silently showing
 // mock numbers next to live ones (fabricated data would be worse than none).
 import type {
-  OverviewPayload, RunDetail, ProbeRegistryItem, ComplianceControl,
-  TargetConfig, HardeningItem, LogEvent, SuiteInfo,
+  OverviewPayload, RunDetail, RecentRun, ProbeRegistryItem, ComplianceControl,
+  TargetConfig, HardeningItem, LogEvent, SuiteInfo, CompareResult, AuditEvent,
 } from "./types";
 import * as mock from "./mock";
 
@@ -114,18 +114,59 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string }>
   return live("/v1/runs", { method: "POST", body: JSON.stringify(input) });
 }
 
-/** Fetch a finished run's markdown report and trigger a browser download. */
-export async function liveRunReport(runId: string): Promise<void> {
+/** Fetch a finished run's report and trigger a browser download. */
+export async function liveRunReport(
+  runId: string,
+  format: "md" | "json" | "sarif" = "md",
+): Promise<void> {
   if (USE_MOCK) return;
   const { report } = await live<{ report: string }>(
     `/v1/runs/${runId}/report`,
-    { method: "POST", body: JSON.stringify({ format: "md" }) },
+    { method: "POST", body: JSON.stringify({ format }) },
   );
-  const blob = new Blob([report], { type: "text/markdown" });
+  const mime =
+    format === "sarif" ? "application/sarif+json" : format === "json" ? "application/json" : "text/markdown";
+  const blob = new Blob([report], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `promptbreaker-${runId}.md`;
+  a.download = `promptbreaker-${runId}.${format}`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------- v1.1 upgrades
+
+/** Recent runs (last 50) — feed for the Compare page selectors. */
+export async function getRuns(): Promise<RecentRun[]> {
+  if (USE_MOCK) return mock.overview.recentRuns;
+  return live<{ runs: RecentRun[] }>("/v1/runs").then((d) => d.runs);
+}
+
+/** Run-vs-run delta: score movement, severity delta, fixed/new probes. */
+export async function getCompare(a: string, b: string): Promise<CompareResult> {
+  if (USE_MOCK) throw new ApiError(501, "Compare requires live mode");
+  return live<CompareResult>(`/v1/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+}
+
+/** Audit trail — newest first. */
+export async function getAudit(limit = 200): Promise<AuditEvent[]> {
+  if (USE_MOCK) return [];
+  return live<{ audit: AuditEvent[] }>(`/v1/audit?limit=${limit}`).then((d) => d.audit);
+}
+
+/** Upload a custom probe suite (probes: full probe objects and/or core ids). */
+export async function createSuite(input: {
+  name: string;
+  description: string;
+  probes: (Record<string, unknown> | string)[];
+}): Promise<SuiteInfo> {
+  if (USE_MOCK) throw new ApiError(501, "Suite upload requires live mode");
+  return live<SuiteInfo>("/v1/suites", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** Delete an uploaded suite (shipped suites are protected server-side). */
+export async function deleteSuite(name: string): Promise<void> {
+  if (USE_MOCK) throw new ApiError(501, "Suite delete requires live mode");
+  await live<{ deleted: string }>(`/v1/suites/${encodeURIComponent(name)}`, { method: "DELETE" });
 }

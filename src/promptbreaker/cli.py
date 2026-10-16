@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from promptbreaker import __version__
 from promptbreaker.adapters.base import build_adapter
@@ -25,23 +25,26 @@ from promptbreaker.scoring import meets_severity_threshold
 _SEV = {s.value.lower(): s for s in Severity}
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser(defaults: dict | None = None) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="promptbreaker",
-        description="PromptBreaker AI — adversarial assessment for LLM apps (authorized targets only)",
+        description="PromptBreaker AI — adversarial assessment for LLM apps (authorized only)",
     )
     p.add_argument("--version", action="version", version=f"promptbreaker {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     scan = sub.add_parser("scan", help="Run an assessment against an authorized target")
-    scan.add_argument("--target", required=True, help="Target base URL (e.g. http://host/v1)")
+    scan.add_argument("--config", default="", metavar="FILE",
+                      help="YAML/JSON scan spec (promptbreaker.yml); CLI flags override it")
+    scan.add_argument("--target", default="", help="Target base URL (e.g. http://host/v1)")
     scan.add_argument("--adapter", default="openai", choices=["openai", "ollama", "http"])
     scan.add_argument("--model", default="default")
     scan.add_argument("--api-key", default="")
     scan.add_argument("--suite", default="core")
     scan.add_argument("--format", default="json", choices=["json", "md", "markdown", "sarif"])
     scan.add_argument("--output", default="", help="Write report to file (default: stdout)")
-    scan.add_argument("--fail-on", default="High", help="Severity threshold that fails CI (Critical|High|Medium|Low|Info)")
+    scan.add_argument("--fail-on", default="High",
+                      help="Severity threshold that fails CI (Critical|High|Medium|Low|Info)")
     scan.add_argument("--max-probes", type=int, default=settings.max_probes_per_run)
     scan.add_argument("--allow-private", action="store_true",
                       help="Permit private-range targets (labs only — SSRF guard off)")
@@ -50,7 +53,84 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--seed", type=int, default=0)
 
     sub.add_parser("suites", help="List available probe suites")
+    if defaults:
+        # Defaults live on the SUBparser: argparse subparsers overwrite parent
+        # set_defaults values with their own during parse.
+        scan.set_defaults(**defaults)
     return p
+
+
+# promptbreaker.yml keys → argparse dests (multiple aliases where natural)
+_CONFIG_KEYS: dict[str, str] = {
+    "target": "target", "adapter": "adapter", "model": "model",
+    "api_key": "api_key", "api_key_env": "api_key", "suite": "suite",
+    "format": "format", "output": "output", "fail_on": "fail_on",
+    "max_probes": "max_probes", "allow_private": "allow_private",
+    "seed": "seed",
+    "attested_by": "attested_by", "authorized_by": "attested_by",
+    "attestation_ref": "attestation_ref", "reference": "attestation_ref",
+}
+
+
+def _load_config(path: str) -> dict:
+    """Read a scan spec. YAML when PyYAML is present; .json always works."""
+    import json as _json
+    from pathlib import Path
+
+    p = Path(path)
+    if not p.exists():
+        print(f"ERROR: config file not found: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    text = p.read_text()
+    if p.suffix.lower() == ".json":
+        data = _json.loads(text)
+    else:
+        try:
+            import yaml  # noqa: PLC0415 — optional dependency, JSON path works without it
+        except ImportError:
+            print("ERROR: --config with YAML needs PyYAML (pip install pyyaml)",
+                  file=sys.stderr)
+            raise SystemExit(2) from None
+        data = yaml.safe_load(text)
+    if not isinstance(data, dict):
+        print(f"ERROR: {path} must contain a mapping of scan options", file=sys.stderr)
+        raise SystemExit(2)
+    unknown = sorted(set(data) - set(_CONFIG_KEYS) - {"comment", "name"})
+    if unknown:
+        print(f"ERROR: unknown config keys: {', '.join(unknown)}", file=sys.stderr)
+        raise SystemExit(2)
+    if "api_key_env" in data:
+        import os
+        env_name = str(data["api_key_env"])
+        if not os.environ.get(env_name):
+            print(f"ERROR: api_key_env {env_name!r} is not set in the environment",
+                  file=sys.stderr)
+            raise SystemExit(2)
+    return data
+
+
+def _config_defaults(cfg: dict) -> dict:
+    import os
+
+    out: dict = {}
+    for key, value in cfg.items():
+        dest = _CONFIG_KEYS.get(key)
+        if dest is None:
+            continue
+        if key == "api_key_env":
+            value = os.environ[str(value)]
+        out[dest] = value
+    return out
+
+
+def _parse(argv: list[str]) -> argparse.Namespace:
+    """Parse argv; a --config file seeds defaults, explicit flags win."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if getattr(args, "config", ""):
+        cfg = _load_config(args.config)
+        args = _build_parser(_config_defaults(cfg)).parse_args(argv)
+    return args
 
 
 def _cmd_suites() -> int:
@@ -61,6 +141,9 @@ def _cmd_suites() -> int:
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
+    if not args.target:
+        print("REFUSED: --target (or target: in --config) is required.", file=sys.stderr)
+        return 2
     if not args.attested_by or not args.attestation_ref:
         print(
             "REFUSED: --attested-by and --attestation-ref are required.\n"
@@ -74,7 +157,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         target_pattern=args.target,
         authorized_by=args.attested_by,
         reference=args.attestation_ref,
-        expires=datetime.now(timezone.utc) + timedelta(hours=24),
+        expires=datetime.now(UTC) + timedelta(hours=24),
     )
 
     adapter = build_adapter(
@@ -126,7 +209,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    args = _parse(list(sys.argv[1:]) if argv is None else list(argv))
     try:
         if args.cmd == "suites":
             return _cmd_suites()

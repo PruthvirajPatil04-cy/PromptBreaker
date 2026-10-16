@@ -9,6 +9,7 @@ const SECTIONS: { heading: string; items: { href: string; label: string; icon: s
     items: [
       { href: "/", label: "Overview", icon: "grid" },
       { href: "/runs", label: "Test Runs", icon: "clock" },
+      { href: "/compare", label: "Compare Runs", icon: "compare" },
       { href: "/probe-settings", label: "Probe Settings", icon: "gear" },
       { href: "/compliance", label: "Compliance", icon: "check" },
       { href: "/target-settings", label: "Target Settings", icon: "target" },
@@ -20,18 +21,23 @@ const SECTIONS: { heading: string; items: { href: string; label: string; icon: s
   },
   {
     heading: "MONITORING",
-    items: [{ href: "/logs", label: "Log Analysis", icon: "activity" }],
+    items: [
+      { href: "/logs", label: "Log Analysis", icon: "activity" },
+      { href: "/audit", label: "Audit Log", icon: "audit" },
+    ],
   },
 ];
 
 const ICON_PATHS: Record<string, string> = {
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
   clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
+  compare: "M8 3v18M16 3v18M3 8h5M16 16h5M5.5 5.5L8 8l-2.5 2.5M18.5 13.5L16 16l2.5 2.5",
   gear: "M12 15a3 3 0 100-6 3 3 0 000 6z",
   check: "M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3",
   target: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z",
   shield: "M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z",
   activity: "M22 12h-4l-3 9L9 3l-3 9H2",
+  audit: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M9 13h6M9 17h6",
 };
 
 export function Sidebar() {
@@ -72,7 +78,7 @@ export function Sidebar() {
       <div className="px-5 py-4 border-t border-border text-[11px] text-faint leading-relaxed">
         © 2025 PromptBreaker AI
         <br />
-        Version 1.0.0
+        Version 1.1.0
       </div>
     </aside>
   );

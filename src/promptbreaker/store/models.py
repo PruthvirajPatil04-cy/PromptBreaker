@@ -8,7 +8,7 @@ backward-compatible for one release.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -19,7 +19,7 @@ def _uuid() -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -44,6 +44,20 @@ class RunRow(Base):
     attestation_ref: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditRow(Base):
+    """Who called what, when — one row per authenticated API request."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+    role: Mapped[str] = mapped_column(String(16), default="admin")
+    method: Mapped[str] = mapped_column(String(8))
+    path: Mapped[str] = mapped_column(Text)
+    status: Mapped[int] = mapped_column(Integer, default=200)
+    detail: Mapped[str] = mapped_column(Text, default="")
 
 
 class FindingRow(Base):

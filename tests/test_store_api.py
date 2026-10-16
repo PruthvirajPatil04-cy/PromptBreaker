@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from promptbreaker.adapters.base import TargetAdapter, TargetResponse
-from promptbreaker.engine.runner import Engine, RunResult
-from promptbreaker.errors import ScopeError
+from promptbreaker.engine.runner import Engine
 from promptbreaker.models import RunBudget, RunStatus, ScopeAttestation
 from promptbreaker.security.redact import redact, redact_mapping
-from promptbreaker.store.db import get_session_factory, init_db
-from promptbreaker.store.models import Base
 from promptbreaker.store import repo
-
+from promptbreaker.store.models import Base
 
 # ---------------------------------------------------------------- redact
 
@@ -52,7 +49,9 @@ class FakeAdapter(TargetAdapter):
     def __init__(self):
         super().__init__("https://authorized.example.com/v1")
     async def complete(self, messages):
-        return TargetResponse(text="I'm sorry, but I can't help with that.", tokens_in=1, tokens_out=1)
+        return TargetResponse(
+            text="I'm sorry, but I can't help with that.", tokens_in=1, tokens_out=1
+        )
 
 
 @pytest.fixture
@@ -69,7 +68,7 @@ async def db():
 def _attestation():
     return ScopeAttestation(
         target_pattern="authorized.example.com", authorized_by="Eng", reference="R-1",
-        expires=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires=datetime.now(UTC) + timedelta(hours=1),
     )
 
 
@@ -117,7 +116,7 @@ async def test_api_scope_gate_blocks_out_of_scope():
             "attestation": {
                 "target_pattern": "mine.example.com",
                 "authorized_by": "Eng", "reference": "R-1",
-                "expires": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                "expires": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             },
         })
     assert resp.status_code == 403
@@ -135,7 +134,7 @@ async def test_api_requires_attestation_fields():
             "attestation": {
                 "target_pattern": "127.0.0.1",
                 "authorized_by": "", "reference": "",
-                "expires": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                "expires": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             },
         })
     # 202 accepted into queue; authorization completeness enforced by CLI/ops,

@@ -190,3 +190,50 @@ class LogEventOut(CamelModel):
     level: str = "info"
     probe_id: str | None = None
     detail: str | None = None
+
+
+# ------------------------------------------------------------------ compare
+
+class CompareSideOut(CamelModel):
+    run_id: str
+    name: str
+    target: str = ""
+    suite: str = ""
+    status: str
+    score: float = 0.0
+    band: str = ""
+    executed_on: datetime | None = None
+    simulated: int = 0
+    successful: int = 0
+    finding_count: int = 0
+    by_severity: dict[str, int] = Field(default_factory=dict)
+    by_category: dict[str, int] = Field(default_factory=dict)
+    failing_probes: dict[str, str] = Field(default_factory=dict)  # probe id -> worst severity
+
+
+class CompareOut(CamelModel):
+    a: CompareSideOut
+    b: CompareSideOut
+    delta_score: float = 0.0
+    severity_delta: dict[str, int] = Field(default_factory=dict)  # b minus a
+    fixed_in_b: list[str] = Field(default_factory=list)  # failing in A, clean in B
+    new_in_b: list[str] = Field(default_factory=list)    # failing in B, clean in A
+
+
+# ------------------------------------------------------------------ suites + audit
+
+class SuiteOut(CamelModel):
+    name: str
+    probes: int
+    description: str = ""
+    builtin: bool = False
+
+
+class AuditOut(CamelModel):
+    id: str
+    ts: datetime
+    role: str
+    method: str
+    path: str
+    status: int
+    detail: str = ""

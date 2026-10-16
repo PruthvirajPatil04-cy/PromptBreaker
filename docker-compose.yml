@@ -1,0 +1,53 @@
+# PromptBreaker — full stack in one command:
+#
+#   docker compose up -d                      # api + dashboard (judge off)
+#   docker compose --profile judge up -d      # + local Ollama judge (offline LLM)
+#
+# Dashboard: http://localhost:3000  (gate creds from PB_DEMO_BASIC)
+# Engine:    http://localhost:8000/healthz, /metrics (Prometheus)
+#
+# API keys are sha256 hashes: "hash" = admin, "hash:viewer" = read-only.
+#   python -c "import hashlib;print(hashlib.sha256(b'MYKEY').hexdigest())"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      PB_API_KEYS: ${PB_API_KEYS:-}                       # empty = dev mode (no auth)
+      PB_WEBHOOK_URL: ${PB_WEBHOOK_URL:-}                 # Slack/Discord alert on High/Critical
+      PB_JUDGE_BASE_URL: ${PB_JUDGE_BASE_URL:-http://ollama:11434/v1}
+      PB_JUDGE_MODEL: ${PB_JUDGE_MODEL:-qwen2.5:7b}
+    volumes:
+      - pb-data:/data
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+      args:
+        PB_API_ORIGIN: http://api:8000
+    ports:
+      - "3000:3000"
+    environment:
+      PB_DEMO_BASIC: ${PB_DEMO_BASIC:-cyberex:prithvi1999@}
+    depends_on:
+      - api
+
+  # Local LLM judge — enable with: --profile judge
+  # The deterministic prefilter still decides almost everything; the LLM is
+  # only consulted when the rules abstain (evasive targets).
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["judge"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  pb-data:
+  ollama-models:

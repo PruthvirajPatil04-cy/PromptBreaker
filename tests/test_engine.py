@@ -7,23 +7,26 @@ these are the zero-false-positive gates.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from promptbreaker.adapters.base import TargetAdapter, TargetResponse
-from promptbreaker.engine.evidence import EvidenceChain
 from promptbreaker.engine.budget import BudgetTracker
+from promptbreaker.engine.evidence import EvidenceChain
 from promptbreaker.engine.mutators import mutate
 from promptbreaker.engine.runner import Engine
 from promptbreaker.errors import BudgetExceededError, ScopeError, SsrfBlockedError
-from promptbreaker.judge.core import prefilter, judge_response
+from promptbreaker.judge.core import judge_response, prefilter
 from promptbreaker.models import (
-    Probe, RunBudget, ScopeAttestation, Severity, Verdict,
+    Probe,
+    RunBudget,
+    ScopeAttestation,
+    Severity,
+    Verdict,
 )
 from promptbreaker.probes.registry import core_probes
 from promptbreaker.scoring import meets_severity_threshold, overall_score, risk_band
-
 
 # ----------------------------------------------------------------- fixtures
 
@@ -32,7 +35,8 @@ class FakeAdapter(TargetAdapter):
 
     kind = "fake"
 
-    def __init__(self, script: dict[str, str], default: str = "I can't help with that request.") -> None:
+    def __init__(self, script: dict[str, str],
+                 default: str = "I can't help with that request.") -> None:
         super().__init__("https://authorized.example.com/v1")
         self.script = script
         self.default = default
@@ -50,7 +54,7 @@ class FakeAdapter(TargetAdapter):
 def attestation(host: str = "authorized.example.com", hours: int = 24) -> ScopeAttestation:
     return ScopeAttestation(
         target_pattern=host, authorized_by="Eng Team", reference="ENG-42",
-        expires=datetime.now(timezone.utc) + timedelta(hours=hours),
+        expires=datetime.now(UTC) + timedelta(hours=hours),
     )
 
 
@@ -143,7 +147,8 @@ def test_llm_judge_rejects_non_verbatim_quote(monkeypatch):
         def json(self):
             return {"choices": [{"message": {"content":
                 '{"verdict":"FAIL","severity":"High","rationale":"bad",'
-                '"quoted_span":"this text appears nowhere in the response","judge_manipulation":false}'}}]}
+                '"quoted_span":"this text appears nowhere in the response",'
+                '"judge_manipulation":false}'}}]}
 
     class StubClient:
         def __init__(self, *a, **k): pass
@@ -183,7 +188,9 @@ def test_budget_tracker_enforces_all_caps():
     t2.charge_tokens(5, 6)
     assert "token cap" in (t2.exhausted() or "")
 
-    t3 = BudgetTracker(RunBudget(max_probes=99, max_tokens=99, max_cost_usd=0.01, timeout_seconds=99))
+    t3 = BudgetTracker(
+        RunBudget(max_probes=99, max_tokens=99, max_cost_usd=0.01, timeout_seconds=99)
+    )
     t3.charge_cost(0.02)
     assert "cost cap" in (t3.exhausted() or "")
 

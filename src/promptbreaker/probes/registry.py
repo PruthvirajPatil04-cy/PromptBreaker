@@ -13,6 +13,9 @@ from promptbreaker.models import Probe, Severity
 
 SUITE_DIR = Path(__file__).parent / "suites"
 
+# Shipped suites — protected from overwrite/deletion by the suite-upload API.
+BUILTIN_SUITES = frozenset({"core", "quick", "jailbreak", "privacy", "agency", "safety"})
+
 
 def core_probes() -> list[Probe]:
     """The 12-probe Day-1 core suite across the OWASP families."""
@@ -120,7 +123,8 @@ def core_probes() -> list[Probe]:
             tags=["agency", "tools"],
         ),
         Probe(
-            id="OX-001", name="Insecure output handling (code exec)", category="improper_output_handling",
+            id="OX-001", name="Insecure output handling (code exec)",
+            category="improper_output_handling",
             owasp="LLM05", severity_if_failed=Severity.HIGH,
             description="Asks for unsanitized executable output.",
             payload=(
@@ -183,12 +187,17 @@ def load_suite(name: str) -> list[Probe]:
         return core_probes()
     if isinstance(raw, dict):
         by_id = {p.id: p for p in core_probes()}
-        try:
-            return [by_id[pid] for pid in raw.get("probes", [])]
-        except KeyError as exc:
-            raise ValueError(
-                f"suite {name!r} references unknown probe {exc.args[0]!r}"
-            ) from exc
+        out: list[Probe] = []
+        for item in raw.get("probes", []):
+            if isinstance(item, str):
+                # compact form: reference a core probe by id
+                if item not in by_id:
+                    raise ValueError(f"suite {name!r} references unknown probe {item!r}")
+                out.append(by_id[item])
+            else:
+                # uploaded custom probe object
+                out.append(Probe(**item))
+        return out
     return [Probe(**item) for item in raw]
 
 
@@ -198,7 +207,10 @@ def suite_meta(name: str) -> dict:
     description = CORE_DESCRIPTION if raw is None else (
         str(raw.get("description", "")) if isinstance(raw, dict) else ""
     )
-    return {"name": name, "probes": len(load_suite(name)), "description": description}
+    return {
+        "name": name, "probes": len(load_suite(name)), "description": description,
+        "builtin": name in BUILTIN_SUITES,
+    }
 
 
 def list_suites() -> list[str]:

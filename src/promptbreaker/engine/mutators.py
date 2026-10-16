@@ -85,6 +85,6 @@ ALL_MUTATORS = [
 
 def mutate(p: Probe, seed: int, budget: int) -> list[Probe]:
     """Deterministically pick up to `budget` mutations for a probe."""
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 — mutation-order RNG, never cryptographic
     picks = rng.sample(ALL_MUTATORS, min(budget, len(ALL_MUTATORS)))
     return [m(p) for m in picks]

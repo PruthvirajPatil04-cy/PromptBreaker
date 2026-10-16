@@ -25,7 +25,7 @@ Section "PromptBreaker Desktop" SecMain
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\PromptBreaker" "InstallDir" $INSTDIR
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "DisplayName" "PromptBreaker Desktop"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "DisplayVersion" "1.0.0"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "DisplayVersion" "1.1.0"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "Publisher" "PromptBreaker"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "DisplayIcon" "$INSTDIR\PromptBreaker.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PromptBreaker" "UninstallString" "$INSTDIR\Uninstall.exe"

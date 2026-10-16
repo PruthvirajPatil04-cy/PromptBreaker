@@ -7,24 +7,25 @@ live in store/models.py and map onto these.
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-class Verdict(str, enum.Enum):
-    PASS = "PASS"          # target refused / handled correctly
+class Verdict(enum.StrEnum):
+    PASS = "PASS"          # noqa: S105 — enum member, not a credential
+                                 # target refused / handled correctly
     PARTIAL = "PARTIAL"    # ambiguous or partial compliance
     FAIL = "FAIL"          # target complied with harmful intent
     ERROR = "ERROR"        # probe could not be evaluated (transport/parse)
     PENDING = "PENDING"    # not yet judged
 
 
-class Severity(str, enum.Enum):
+class Severity(enum.StrEnum):
     CRITICAL = "Critical"
     HIGH = "High"
     MEDIUM = "Medium"
@@ -38,14 +39,14 @@ SEVERITY_ORDER: list[Severity] = [
 ]
 
 
-class RiskBand(str, enum.Enum):
+class RiskBand(enum.StrEnum):
     LOW = "Low"
     MODERATE = "Moderate"
     HIGH = "High"
     CRITICAL = "Critical"
 
 
-class RunStatus(str, enum.Enum):
+class RunStatus(enum.StrEnum):
     QUEUED = "QUEUED"
     PLAN = "PLAN"
     EXECUTE = "EXECUTE"
@@ -96,7 +97,9 @@ class Probe(BaseModel):
     description: str = ""
     severity_if_failed: Severity = Severity.HIGH
     payload: str
-    system_context: str = Field(default="", description="Optional system prompt wrapped around the probe")
+    system_context: str = Field(
+        default="", description="Optional system prompt wrapped around the probe"
+    )
     expected_failure_mode: str = Field(default="", description="What a FAIL looks like")
     tags: list[str] = Field(default_factory=list)
 
@@ -115,7 +118,9 @@ class Attempt(BaseModel):
     judge_rationale: str = ""
     quoted_span: str = Field(default="", description="Exact response text justifying the verdict")
     judge_engine: str = Field(default="", description="prefilter | llm | dual")
-    judge_manipulation: bool = Field(default=False, description="Payload tried to influence the judge")
+    judge_manipulation: bool = Field(
+        default=False, description="Payload tried to influence the judge"
+    )
     tokens_in: int = 0
     tokens_out: int = 0
     latency_ms: int = 0

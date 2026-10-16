@@ -1,0 +1,15 @@
+# PromptBreaker engine API — FastAPI control plane + judge + store.
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir .
+
+COPY demo ./demo
+
+ENV PB_DATABASE_URL=sqlite+aiosqlite:////data/promptbreaker.db
+VOLUME /data
+EXPOSE 8000
+
+CMD ["uvicorn", "promptbreaker.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
