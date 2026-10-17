@@ -67,9 +67,24 @@ into your project to gate every PR and upload SARIF to GitHub code scanning.
 
 ### Windows app
 
-`windows/dist/PromptBreaker-Setup.exe` — native WebView2 wrapper around the
-console; connects to localhost, the hosted demo, or shows offline help.
-Credential config lives in `config.json` next to the exe.
+Two flavors, both under `windows/`:
+
+- **Desktop (thin)** — `windows/dist/PromptBreaker-Setup.exe`: native
+  WebView2 wrapper; connects to localhost (WSL services, the on-stage path),
+  then the hosted demo, or shows offline help. Credentials live in
+  `config.json` next to the exe.
+- **Offline (self-contained)** — `windows/dist-offline/PromptBreaker-Offline-Setup.exe`
+  (~37 MB installer, ~53 MB zip): the whole stack bundled — embeddable
+  Python 3.12 + engine, `node.exe` + Next standalone dashboard, and the 8
+  demo chatbots. Double-click `PromptBreaker.exe` and it boots
+  `127.0.0.1:8000/3000/18081-18088`, seeds the demo targets and opens the
+  window. No WSL, no internet, no account; everything binds loopback only.
+  The LLM judge auto-detects a local Ollama (and its installed model) and
+  degrades to the deterministic prefilter when absent — never guesses.
+  `PromptBreaker.exe --selftest` runs the full stack headless and writes
+  PASS/FAIL to `selftest.log` (CI/judge friendly); launcher diagnostics land
+  in `%LOCALAPPDATA%\PromptBreaker\offline.log`. Build it with
+  `windows/build-offline.sh` (downloads cached, cross-builds from Linux).
 
 ## The judge — why the verdicts are defensible
 

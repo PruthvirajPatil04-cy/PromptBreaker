@@ -28,6 +28,32 @@ containers required.
 systemctl status promptbreaker-api promptbreaker-dashboard promptbreaker-chatbots ollama
 ```
 
+## Offline Windows app — the zero-setup stage path
+
+No WSL on the venue PC? Use the self-contained desktop app instead:
+
+1. Copy `PromptBreaker-Offline-Setup.exe` (or the zip) to the machine and
+   install/unzip. Per-user install, no admin rights needed.
+2. Double-click **PromptBreaker** → first launch boots the bundled engine
+   (`127.0.0.1:8000`), dashboard (`:3000`) and all 8 chatbots
+   (`:18081–18088`), seeds the 8 bots as targets and opens the window
+   (~10 s). Everything binds loopback only; nothing leaves the machine.
+3. Run the same stage flow as the hosted demo — the dashboard is identical.
+
+Judge-mode note: the deterministic prefilter always works offline. If the
+machine runs Ollama, the app auto-detects it (and its installed model) and
+upgrades to the full hybrid judge on relaunch. Without Ollama, undecided
+probes return honest ERROR verdicts — the engine never guesses.
+
+Headless proof for CI/judges (exit 0 = pass, writes `selftest.log`):
+
+```bat
+PromptBreaker.exe --selftest
+```
+
+Stop any locally-running PromptBreaker services first — the launcher
+refuses to run against ports it does not own (and says so).
+
 ## First-time seed (populates real history)
 
 ```bash

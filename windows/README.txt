@@ -3,7 +3,16 @@ PromptBreaker Desktop - Windows app
 
 A native window around the PromptBreaker LLM red-teaming dashboard.
 
-INSTALL
+TWO FLAVORS
+  PromptBreaker-Setup.exe / PromptBreaker-win64.zip
+      "Thin" wrapper - uses services running in WSL on the host PC, or the
+      hosted demo site, or shows an offline help page.
+  PromptBreaker-Offline-Setup.exe / PromptBreaker-Offline-win64.zip
+      FULLY SELF-CONTAINED - engine, dashboard and the 8 demo chatbots are
+      bundled (embeddable Python + node.exe). Works with no WSL, no
+      internet, no account. See README.txt inside that package.
+
+INSTALL (thin)
   Run PromptBreaker-Setup.exe (installs to Program Files, adds Desktop and
   Start-menu shortcuts), or just unzip and double-click PromptBreaker.exe.
 
@@ -16,7 +25,7 @@ HOW IT CONNECTS (config.json sits next to PromptBreaker.exe)
   publicUser /
   publicPass     login for the hosted site (default: cyberex / prithvi1999@)
 
-  Hosted demo: https://queen-walked-informal-boots.trycloudflare.com
+  Hosted demo: https://harrison-niagara-potentially-sharing.trycloudflare.com
   The URL changes if the host PC restarts the tunnel - edit config.json
   with the fresh URL (it is printed by: journalctl -u promptbreaker-tunnel).
 
