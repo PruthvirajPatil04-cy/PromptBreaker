@@ -19,6 +19,10 @@ dist/
 build/
 # Windows app binaries ship with the repo
 !windows/dist/
+# Offline bundle: staging, download cache and big artifacts stay local
+windows/offline-cache/
+windows/offline/
+windows/dist-offline/
 
 # Node / Next.js
 dashboard/node_modules/

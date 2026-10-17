@@ -554,9 +554,12 @@ def selftest() -> int:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # --loopback binds only 127.0.0.1 (the offline Windows bundle uses it so
+    # the demo bots are never reachable from the LAN).
+    host = "127.0.0.1" if "--loopback" in sys.argv else "0.0.0.0"
     servers = []
     for bot in BOTS:
-        srv = ThreadingHTTPServer(("0.0.0.0", bot["port"]), make_handler(bot))
+        srv = ThreadingHTTPServer((host, bot["port"]), make_handler(bot))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         servers.append(srv)
         print(f"{bot['name']:15} http://127.0.0.1:{bot['port']}/  key={bot['key']}", flush=True)
