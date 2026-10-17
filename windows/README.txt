@@ -25,7 +25,7 @@ HOW IT CONNECTS (config.json sits next to PromptBreaker.exe)
   publicUser /
   publicPass     login for the hosted site (default: cyberex / prithvi1999@)
 
-  Hosted demo: https://harrison-niagara-potentially-sharing.trycloudflare.com
+  Hosted demo: https://aged-figures-billy-disposition.trycloudflare.com
   The URL changes if the host PC restarts the tunnel - edit config.json
   with the fresh URL (it is printed by: journalctl -u promptbreaker-tunnel).
 

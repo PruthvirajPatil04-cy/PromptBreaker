@@ -292,7 +292,7 @@ is no second hostname and no CORS in any deployment.
 
 | | |
 |---|---|
-| URL | `https://queen-walked-informal-boots.trycloudflare.com` |
+| URL | `https://aged-figures-billy-disposition.trycloudflare.com` |
 | Login (site) | `cyberex` / `prithvi1999@` (basic auth, Next middleware) |
 | API key (in-app) | the same `.api_key` as local — baked into the bundle, behind the gate |
 
